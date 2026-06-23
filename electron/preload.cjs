@@ -11,6 +11,25 @@ contextBridge.exposeInMainWorld('callerflash', {
     close: () => ipcRenderer.send('window:close'),
     hideToTray: () => ipcRenderer.send('window:hide-to-tray'),
     show: () => ipcRenderer.send('window:show'),
+    // Subscribe to events pushed from main when the tray restores or
+    // re-hides the window. Returns an unsubscribe function.
+    onRestoredFromTray: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on('window:restored-from-tray', handler);
+      return () => ipcRenderer.removeListener('window:restored-from-tray', handler);
+    },
+    onHiddenToTray: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on('window:hidden-to-tray', handler);
+      return () => ipcRenderer.removeListener('window:hidden-to-tray', handler);
+    },
+  },
+
+  // ── Tray sync ───────────────────────────────────────────────────
+  // Push the current SIP status label to main so the tray tooltip
+  // and "SIP: …" menu item reflect reality (Connected / Registered / Offline).
+  tray: {
+    setSipStatus: (status) => ipcRenderer.send('tray:set-sip-status', status),
   },
 
   // ── Secure credential storage (DPAPI) ───────────────────────────

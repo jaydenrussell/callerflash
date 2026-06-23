@@ -464,7 +464,7 @@ export function SipSettings() {
         <SettingsSection
           icon={<Power className="w-4 h-4" />}
           title="Startup & Background"
-          description="Launch behavior and minimized background listener options"
+          description="Launch behavior and system-tray background listener options"
         >
           <div className="space-y-3">
             <ToggleRow
@@ -484,8 +484,8 @@ export function SipSettings() {
             />
             <ToggleRow
               icon={<Minimize2 className="w-4 h-4" />}
-              label="Start Minimized"
-              description="Open directly into background mode on launch while still monitoring SIP calls."
+              label="Start Minimized to Tray"
+              description="On launch, hide the window to the system tray so only the tray icon is visible. SIP monitoring still runs in the background."
               value={appPreferences.startMinimized}
               onToggle={() => {
                 const next = !appPreferences.startMinimized;
@@ -493,16 +493,32 @@ export function SipSettings() {
                 addDiagnosticLog({
                   level: 'info',
                   category: 'SYSTEM',
-                  message: next ? 'Start minimized enabled for next launch' : 'Start minimized disabled',
+                  message: next
+                    ? 'Start minimized to tray enabled for next launch'
+                    : 'Start minimized to tray disabled',
                 });
               }}
             />
 
+            <div className="rounded-lg border border-win-accent/20 bg-win-accent/8 p-3">
+              <p className="text-xs font-semibold text-win-accent">System tray behavior</p>
+              <p className="mt-1 text-xs text-win-text-secondary leading-relaxed">
+                Clicking the <span className="font-semibold">−</span> or <span className="font-semibold">×</span> window
+                buttons hides the window to the system tray instead of quitting. The app keeps running in the
+                background — SIP registration, incoming-call detection, toast notifications, and clipboard
+                auto-copy all stay active.
+              </p>
+              <p className="mt-2 text-xs text-win-text-secondary leading-relaxed">
+                Restore the window by left-clicking the tray icon, double-clicking it, or choosing{' '}
+                <span className="font-semibold">Show CallerFlash</span> from the tray menu. Quit from the same menu.
+              </p>
+            </div>
+
             <div className="rounded-lg border border-win-success/20 bg-win-success/8 p-3">
               <p className="text-xs font-semibold text-win-success">Background call listener stays active</p>
               <p className="mt-1 text-xs text-win-text-secondary leading-relaxed">
-                When the app is minimized, SIP registration and incoming-call toast detection continue running.
-                New calls still trigger toast notifications and clipboard auto-copy.
+                Whether minimized to tray or fully closed in the UI, SIP registration and incoming-call toast
+                detection continue running. New calls still trigger toast notifications and clipboard auto-copy.
               </p>
             </div>
           </div>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Phone, PhoneIncoming, PhoneMissed, PhoneOff,
   Wifi, WifiOff, Bell, Clipboard, Clock, Activity,
-  Zap, TrendingUp, Shield, AppWindow
+  Zap, TrendingUp, Shield, AppWindow, EyeOff
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { simulateIncomingCall } from '../utils/simulateIncomingCall';
@@ -11,7 +11,7 @@ export function Dashboard() {
   const {
     sipConnected, sipRegistered, setSipConnected, setSipRegistered,
     callHistory, addDiagnosticLog, toastConfig, clipboardText,
-    appPreferences, isMinimized, sipConfig,
+    appPreferences, isMinimized, setIsMinimized, sipConfig,
   } = useAppStore();
 
   const [uptime, setUptime] = useState(0);
@@ -58,6 +58,18 @@ export function Dashboard() {
 
   const triggerTestCall = () => {
     simulateIncomingCall('dashboard');
+  };
+
+  const hideToTray = () => {
+    setIsMinimized(true);
+    if (window.callerflash?.window?.hideToTray) {
+      window.callerflash.window.hideToTray();
+    }
+    addDiagnosticLog({
+      level: 'info',
+      category: 'SYSTEM',
+      message: 'Window hidden to system tray from Dashboard',
+    });
   };
 
   const missedCalls = callHistory.filter(c => c.status === 'missed').length;
@@ -215,6 +227,11 @@ export function Dashboard() {
               onClick={() => {
                 addDiagnosticLog({ level: 'info', category: 'UPDATE', message: 'Checking GitHub for updates...' });
               }}
+            />
+            <QuickAction
+              icon={<EyeOff className="w-4 h-4" />}
+              label="Hide Window to Tray"
+              onClick={hideToTray}
             />
           </div>
         </div>

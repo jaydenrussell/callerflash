@@ -30,6 +30,29 @@ function useWindowWidth() {
 function TitleBar({ compact }: { compact: boolean }) {
   const { setIsMinimized, addDiagnosticLog, sipConnected } = useAppStore();
 
+  // Both the minimize (−) and close (×) buttons hide the window to the
+  // system tray. The app keeps running in the background; the user
+  // restores it from the tray icon (left-click or "Show CallerFlash" menu).
+  const hideToTray = () => {
+    setIsMinimized(true);
+    if (window.callerflash?.window?.hideToTray) {
+      window.callerflash.window.hideToTray();
+    } else {
+      // Dev fallback (running outside Electron): just collapse to MinimizedShell.
+      addDiagnosticLog({
+        level: 'info',
+        category: 'SYSTEM',
+        message: 'Main window minimized to background mode',
+      });
+      return;
+    }
+    addDiagnosticLog({
+      level: 'info',
+      category: 'SYSTEM',
+      message: 'Window hidden to system tray; SIP monitoring continues in background',
+    });
+  };
+
   return (
     <div className="h-9 bg-win-card border-b border-win-border flex items-center justify-between select-none flex-shrink-0">
       <div className="flex items-center gap-2 px-3 min-w-0 flex-1">
@@ -55,12 +78,9 @@ function TitleBar({ compact }: { compact: boolean }) {
       </div>
       <div className="flex h-full flex-shrink-0">
         <button
-          onClick={() => {
-            setIsMinimized(true);
-            addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Main window minimized to background mode' });
-          }}
+          onClick={hideToTray}
           className="px-3 sm:px-4 h-full hover:bg-win-surface-hover transition-colors flex items-center"
-          title="Minimize"
+          title="Minimize to tray"
         >
           <Minus className="w-3.5 h-3.5 text-win-text-secondary" />
         </button>
@@ -71,12 +91,9 @@ function TitleBar({ compact }: { compact: boolean }) {
           <Square className="w-3 h-3 text-win-text-secondary" />
         </button>
         <button
-          onClick={() => {
-            setIsMinimized(true);
-            addDiagnosticLog({ level: 'warning', category: 'SYSTEM', message: 'Window hidden; SIP monitoring continues in background mode' });
-          }}
+          onClick={hideToTray}
           className="px-3 sm:px-4 h-full hover:bg-red-600 transition-colors flex items-center group"
-          title="Hide to background"
+          title="Hide to system tray"
         >
           <X className="w-3.5 h-3.5 text-win-text-secondary group-hover:text-white" />
         </button>
@@ -108,6 +125,21 @@ function MainContent() {
 function MinimizedShell() {
   const { sipConnected, sipRegistered, setIsMinimized, addDiagnosticLog, appPreferences } = useAppStore();
 
+  const restore = () => {
+    setIsMinimized(false);
+    if (window.callerflash?.window?.show) {
+      window.callerflash.window.show();
+    }
+    addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Main window restored from background mode' });
+  };
+
+  const hideToTray = () => {
+    if (window.callerflash?.window?.hideToTray) {
+      window.callerflash.window.hideToTray();
+    }
+    addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Window hidden to system tray' });
+  };
+
   return (
     <div className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,#12324d_0%,#202020_38%,#141414_100%)]">
       <div className="absolute inset-0 bg-black/20" />
@@ -118,18 +150,16 @@ function MinimizedShell() {
               <AppWindow className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-win-text">CallerFlash is minimized</p>
+              <p className="text-sm font-semibold text-win-text">CallerFlash is in background mode</p>
               <p className="mt-1 text-xs text-win-text-secondary">
-                Incoming calls still trigger toast alerts and clipboard auto-copy while the window is hidden.
+                Window is hidden to the system tray. Incoming calls still trigger toast alerts and clipboard auto-copy.
               </p>
             </div>
           </div>
           <button
-            onClick={() => {
-              setIsMinimized(false);
-              addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Main window restored from background mode' });
-            }}
+            onClick={restore}
             className="rounded-lg border border-win-border bg-win-surface px-2.5 py-1.5 text-xs font-medium text-win-text-secondary transition-colors hover:bg-win-surface-hover hover:text-win-text flex-shrink-0"
+            title="Restore window"
           >
             <Undo2 className="h-3.5 w-3.5" />
           </button>
@@ -153,19 +183,25 @@ function MinimizedShell() {
         <div className="mt-4 rounded-xl border border-win-success/20 bg-win-success/10 p-3">
           <p className="text-xs font-semibold text-win-success">Background call detection active</p>
           <p className="mt-1 text-xs leading-relaxed text-win-text-secondary">
-            Minimizing the window does not stop SIP registration, inbound INVITE handling, toast notifications, or clipboard copying.
+            Hiding to the system tray does not stop SIP registration, inbound INVITE handling, toast notifications, or clipboard copying.
+            Click the tray icon in the Windows notification area to bring the window back.
           </p>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
-            onClick={() => {
-              setIsMinimized(false);
-              addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Main window restored from background mode' });
-            }}
+            onClick={restore}
             className="flex-1 min-w-[140px] rounded-xl bg-win-accent px-4 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-win-accent-hover"
           >
             Restore Window
+          </button>
+          <button
+            onClick={hideToTray}
+            className="flex items-center gap-2 rounded-xl border border-win-border bg-win-surface px-4 py-2.5 text-sm font-medium text-win-text-secondary transition-colors hover:bg-win-surface-hover hover:text-win-text"
+            title="Hide window to the system tray"
+          >
+            <AppWindow className="h-4 w-4" />
+            Hide to Tray
           </button>
           <button
             onClick={() => simulateIncomingCall('background')}
@@ -206,19 +242,63 @@ function MiniStat({
 }
 
 export default function App() {
-  const { isMinimized, addDiagnosticLog, appPreferences } = useAppStore();
+  const { isMinimized, setIsMinimized, addDiagnosticLog, appPreferences, sipConnected, sipRegistered } = useAppStore();
   const width = useWindowWidth();
   const sidebarCollapsed = width < SIDEBAR_COLLAPSE_BREAKPOINT;
   const titleCompact = width < 520;
 
   useEffect(() => {
-    if (appPreferences.startMinimized) {
-      addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Application launched in minimized background mode' });
-    }
     if (appPreferences.startWithWindows) {
       addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Start with Windows preference loaded' });
     }
   }, []);
+
+  // If "Start minimized" is enabled, hide to the system tray as soon as
+  // the renderer mounts. The user sees only the tray icon.
+  useEffect(() => {
+    if (!appPreferences.startMinimized) return;
+    setIsMinimized(true);
+    // Defer one tick so the IPC channel is wired up by the preload bridge.
+    const t = setTimeout(() => {
+      if (window.callerflash?.window?.hideToTray) {
+        window.callerflash.window.hideToTray();
+      }
+      addDiagnosticLog({
+        level: 'info',
+        category: 'SYSTEM',
+        message: 'Application launched in background mode (hidden to system tray)',
+      });
+    }, 50);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Subscribe to tray → renderer events. The main process fires these
+  // when the user clicks the tray icon (left-click toggle or "Show/Hide"
+  // menu entries). We keep the renderer's `isMinimized` flag in sync so
+  // MinimizedShell vs full-UI swaps correctly.
+  useEffect(() => {
+    if (!window.callerflash?.window) return;
+    const offRestored = window.callerflash.window.onRestoredFromTray?.(() => {
+      setIsMinimized(false);
+    });
+    const offHidden = window.callerflash.window.onHiddenToTray?.(() => {
+      setIsMinimized(true);
+    });
+    return () => {
+      offRestored?.();
+      offHidden?.();
+    };
+  }, [setIsMinimized]);
+
+  // Push the current SIP status to main so the tray tooltip + "SIP: …"
+  // menu item stay current. Cheap — just a string IPC send.
+  useEffect(() => {
+    if (!window.callerflash?.tray?.setSipStatus) return;
+    const label = sipConnected
+      ? sipRegistered ? 'Registered' : 'Connecting'
+      : 'Offline';
+    window.callerflash.tray.setSipStatus(label);
+  }, [sipConnected, sipRegistered]);
 
   return (
     <div className="h-screen w-screen flex flex-col bg-win-bg overflow-hidden min-w-[360px]">
