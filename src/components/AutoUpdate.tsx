@@ -532,11 +532,11 @@ sha256sum -c SHA256SUMS --ignore-missing`}</pre>
                       </span>
                     )}
                   </div>
-                  <span className="text-[11px] text-win-text-tertiary">{release.date}</span>
+                  <span className="text-xs text-win-text-tertiary">{release.date}</span>
                 </div>
                 <ul className="space-y-1">
                   {release.notes.map((note, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-[11px] text-win-text-secondary">
+                    <li key={i} className="flex items-start gap-1.5 text-xs text-win-text-secondary">
                       <ArrowRight className="w-3 h-3 text-win-text-tertiary mt-0.5 flex-shrink-0" />
                       {note}
                     </li>

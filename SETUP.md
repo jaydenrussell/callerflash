@@ -1,110 +1,87 @@
-# How to set up this project on GitHub (Web Only)
+# CallerFlash — GitHub Setup (Web Only)
 
-Since you can only use GitHub's web interface, follow these exact steps.
-
----
-
-## Step 1: Create the repository
-
-1. Go to [github.com/new](https://github.com/new)
-2. **Repository name:** `callerflash` (already created)
-3. **Description:** `SIP-compliant client with toast notifications`
-4. **Public**
-5. Do NOT check anything — leave README, .gitignore, license all UNCHECKED
-6. Click **Create repository**
-
-## Step 2: Upload the source code
-
-On your new empty repository page:
-
-1. Click the link that says **"uploading an existing file"** (below the code block)
-2. **Drag and drop ALL of these files** from the extracted ZIP folder into the upload area:
+## Branch Strategy
 
 ```
-README.md
-SETUP.md
-LICENSE
-SECURITY.md
-gitignore.txt
-.github-workflow.yml
-index.html
-package.json
-tsconfig.json
-vite.config.ts
-electron-builder.yml
-electron/main.js
-build/icon.ico
-src/main.tsx
-src/App.tsx
-src/index.css
-src/utils/cn.ts
-src/utils/simulateIncomingCall.ts
-src/store/useAppStore.ts
-src/security/updateVerifier.ts
-src/security/secretRedactor.ts
-src/components/Sidebar.tsx
-src/components/Dashboard.tsx
-src/components/CallHistory.tsx
-src/components/SipSettings.tsx
-src/components/ToastSettings.tsx
-src/components/ToastNotification.tsx
-src/components/Diagnostics.tsx
-src/components/AutoUpdate.tsx
-src/components/About.tsx
+main (you edit here)
+  ↓ auto-sync
+nightly (auto-builds .exe pre-release)
+  ↓ one-click promote
+beta (pre-release for testing)
+  ↓ one-click promote
+stable (full release with .exe)
 ```
 
-3. Add commit message: `Initial commit`
-4. Select **"Commit directly to the main branch"**
-5. Click **Commit changes**
+| Branch | What it does | How code gets there |
+|--------|-------------|-------------------|
+| **main** | Development — all edits go here | You push changes |
+| **nightly** | Auto-built every time main changes | Auto-synced from main |
+| **beta** | Pre-release for testing | Click "Promote → Beta" workflow |
+| **stable** | Production release with `.exe` installer | Click "Promote → Stable" workflow |
 
-## Step 3: Create the `.github/workflows/release.yml` file
+## How to set up (first time)
 
-The workflow file must live in a `.github/workflows/` folder. Since you can't upload dotfiles via the web uploader, you create it manually:
+### 1. Create workflow files on each branch
 
-1. Click the **Add file** dropdown button (top-right of your repo)
-2. Select **"Create new file"**
-3. In the **"Name your file…"** field, type exactly:
-   ```
-   .github/workflows/release.yml
-   ```
-   (GitHub automatically creates the folders)
-4. Open the `.github-workflow.yml` file you uploaded earlier, **copy its entire content**
-5. Paste it into the GitHub editor
-6. Click **Commit new file**
+Each branch needs its own copy of the workflow files inside `.github/workflows/`.
 
-## Step 4: Create `.gitignore`
+**On the `main` branch:**
+
+Create **three** files by clicking **Add file → Create new file**:
+
+**File 1:** `.github/workflows/release.yml`
+- Copy content from `.github-workflow.yml`
+
+**File 2:** `.github/workflows/promote-beta.yml`
+- Copy content from `.github-promote-beta.yml`
+
+**File 3:** `.github/workflows/promote-stable.yml`
+- Copy content from `.github-promote-stable.yml`
+
+**Then sync to other branches:**
+
+Once all three files are on `main`, the auto-sync will copy them to `nightly` on the next push.
+
+For `beta` and `stable`, you can run the promote workflows to pull everything in, OR manually create the same three files on those branches.
+
+### 2. Create the .gitignore
 
 1. Click **Add file → Create new file**
 2. Name it: `.gitignore`
-3. Open `gitignore.txt` from your upload, **copy its content**
-4. Paste it, click **Commit new file**
-5. **Delete the old `gitignore.txt`** — click on it in the file list, click the trash icon, commit
+3. Copy content from `gitignore.txt`
+4. Commit, then delete `gitignore.txt`
 
-## Step 5: Create the release branches
+### 3. Create branches (if not already done)
 
-1. Click the **branch selector** dropdown (top-left, says **"main"**)
-2. Type: `nightly` and click **"Create branch: nightly from main"**
-3. Repeat: type `beta` → **Create branch**
-4. Repeat: type `stable` → **Create branch**
-5. Switch back to **main**
+1. Click branch dropdown → type `nightly` → Create branch
+2. Repeat for `beta` and `stable`
+3. Switch back to `main`
 
-## Step 6: Trigger your first build
+## Daily workflow
 
-1. Go to the **Actions** tab
-2. Click **"Build and Release"** on the left sidebar
-3. Click **"Run workflow" → Branch: nightly → Run workflow**
-4. Wait ~3 minutes, then check your **Releases** tab
+### Making changes
+1. Go to the `main` branch
+2. Edit files, commit
+3. CI runs automatically
+4. Code auto-syncs to `nightly` → nightly `.exe` is built
 
----
+### Promoting to beta
+1. Go to **Actions** tab
+2. Click **"Promote → Beta"** on the left
+3. Click **"Run workflow"**
+4. A beta `.exe` pre-release is created automatically
 
-## How releases work
+### Releasing to stable
+1. Go to **Actions** tab
+2. Click **"Promote → Stable"** on the left
+3. Click **"Run workflow"**
+4. A stable `.exe` full release is created automatically
 
-| Branch | Channel | Version | Published as |
-|--------|---------|---------|-------------|
-| `nightly` | Nightly | `1.4.2-nightly.1` | Pre-release |
-| `beta` | Beta | `1.4.2-beta.1` | Pre-release |
-| `stable` | Stable | `1.4.2` | Full release |
-| Tag `v1.5.0` | Stable | `1.5.0` | Full release |
-| Tag `v1.5.0-beta.1` | Beta | `1.5.0-beta.1` | Pre-release |
+### Summary of what's automated
 
-The workflow always uses **Node.js latest** (not pinned to any specific version).
+| You do | What happens |
+|--------|-------------|
+| Push to `main` | CI check → auto-sync to nightly → nightly `.exe` built |
+| Click "Promote → Beta" | nightly → beta → beta `.exe` built |
+| Click "Promote → Stable" | beta → stable → stable `.exe` built |
+| Nothing else needed | Tags, releases, uploads all automatic |

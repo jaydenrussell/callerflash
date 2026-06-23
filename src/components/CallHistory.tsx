@@ -28,7 +28,7 @@ export function CallHistory() {
     addDiagnosticLog({
       level: 'info',
       category: 'SYSTEM',
-      message: `Copied ${clean} to clipboard from call history`,
+      message: `Copied number to clipboard from call history`,
     });
   };
 
@@ -39,7 +39,7 @@ export function CallHistory() {
         `"${c.callerNumber}","${c.callerName}","${c.timestamp.toISOString()}","${c.direction}","${c.status}"`
       ),
     ].join('\n');
-    
+
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -47,7 +47,7 @@ export function CallHistory() {
     a.download = `callerflash-history-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    
+
     addDiagnosticLog({
       level: 'info',
       category: 'SYSTEM',
@@ -59,16 +59,16 @@ export function CallHistory() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-2xl font-bold text-win-text">Call History</h2>
-          <p className="text-sm text-win-text-secondary mt-1">
-            {callHistory.length} total calls • Click any number to copy for Acuity Scheduler
+          <h2 className="text-xl font-bold text-win-text">Call History</h2>
+          <p className="text-xs text-win-text-secondary mt-1">
+            {callHistory.length} total calls • Click any number to copy to clipboard
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={exportCSV}
             disabled={callHistory.length === 0}
-            className="flex items-center gap-2 px-3 py-2 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm transition-colors border border-win-border disabled:opacity-40"
+            className="flex items-center gap-2 px-3.5 py-2 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm font-medium transition-colors border border-win-border disabled:opacity-40"
           >
             <Download className="w-4 h-4" />
             Export CSV
@@ -76,7 +76,7 @@ export function CallHistory() {
           <button
             onClick={clearCallHistory}
             disabled={callHistory.length === 0}
-            className="flex items-center gap-2 px-3 py-2 bg-win-error/10 hover:bg-win-error/20 text-win-error rounded-lg text-sm transition-colors border border-win-error/20 disabled:opacity-40"
+            className="flex items-center gap-2 px-3.5 py-2 bg-win-error/10 hover:bg-win-error/20 text-win-error rounded-lg text-sm font-medium transition-colors border border-win-error/20 disabled:opacity-40"
           >
             <Trash2 className="w-4 h-4" />
             Clear All
@@ -93,7 +93,7 @@ export function CallHistory() {
             placeholder="Search by name or number..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-win-surface border border-win-border rounded-lg text-sm text-win-text placeholder:text-win-text-tertiary focus:outline-none focus:border-win-accent transition-colors"
+            className="w-full pl-10 pr-4 py-2 bg-win-surface border border-win-border rounded-lg text-sm text-win-text placeholder:text-win-text-tertiary focus:outline-none focus:border-win-accent transition-colors"
           />
         </div>
         <div className="flex items-center gap-1 bg-win-surface border border-win-border rounded-lg p-1">
@@ -102,7 +102,7 @@ export function CallHistory() {
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 filterStatus === status
                   ? 'bg-win-accent/20 text-win-accent'
                   : 'text-win-text-secondary hover:text-win-text hover:bg-win-surface-hover'
@@ -118,12 +118,12 @@ export function CallHistory() {
       <div className="bg-win-surface rounded-xl border border-win-border overflow-hidden">
         {/* Header */}
         <div className="grid grid-cols-12 gap-4 px-4 py-3 border-b border-win-border bg-win-card">
-          <span className="col-span-1 text-[11px] font-semibold text-win-text-tertiary uppercase tracking-wider">Type</span>
-          <span className="col-span-3 text-[11px] font-semibold text-win-text-tertiary uppercase tracking-wider">Number</span>
-          <span className="col-span-3 text-[11px] font-semibold text-win-text-tertiary uppercase tracking-wider">Caller Name</span>
-          <span className="col-span-2 text-[11px] font-semibold text-win-text-tertiary uppercase tracking-wider">Time</span>
-          <span className="col-span-1 text-[11px] font-semibold text-win-text-tertiary uppercase tracking-wider">Status</span>
-          <span className="col-span-2 text-[11px] font-semibold text-win-text-tertiary uppercase tracking-wider text-right">Actions</span>
+          <span className="col-span-1 text-xs font-semibold text-win-text-tertiary uppercase tracking-wider">Type</span>
+          <span className="col-span-3 text-xs font-semibold text-win-text-tertiary uppercase tracking-wider">Number</span>
+          <span className="col-span-3 text-xs font-semibold text-win-text-tertiary uppercase tracking-wider">Caller Name</span>
+          <span className="col-span-2 text-xs font-semibold text-win-text-tertiary uppercase tracking-wider">Time</span>
+          <span className="col-span-1 text-xs font-semibold text-win-text-tertiary uppercase tracking-wider">Status</span>
+          <span className="col-span-2 text-xs font-semibold text-win-text-tertiary uppercase tracking-wider text-right">Actions</span>
         </div>
 
         {/* Rows */}
@@ -170,12 +170,12 @@ export function CallHistory() {
                   <p className="text-xs text-win-text-secondary">
                     {call.timestamp.toLocaleDateString()}
                   </p>
-                  <p className="text-[11px] text-win-text-tertiary">
+                  <p className="text-xs text-win-text-tertiary">
                     {call.timestamp.toLocaleTimeString()}
                   </p>
                 </div>
                 <div className="col-span-1">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${
                     call.status === 'answered' ? 'bg-win-success/15 text-win-success' :
                     call.status === 'missed' ? 'bg-win-error/15 text-win-error' :
                     'bg-win-warning/15 text-win-warning'
@@ -186,7 +186,7 @@ export function CallHistory() {
                 <div className="col-span-2 flex justify-end">
                   <button
                     onClick={() => handleCopy(call.callerNumber, call.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-win-accent/10 text-win-accent hover:bg-win-accent/20 transition-all opacity-0 group-hover:opacity-100"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-win-accent/10 text-win-accent hover:bg-win-accent/20 transition-colors opacity-0 group-hover:opacity-100"
                   >
                     {copiedId === call.id ? (
                       <>

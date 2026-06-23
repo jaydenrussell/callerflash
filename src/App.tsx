@@ -42,8 +42,8 @@ function TitleBar({ compact }: { compact: boolean }) {
           {compact ? 'CallerFlash' : 'CallerFlash — SIP Client'}
         </span>
         {!compact && (
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold flex-shrink-0 ${sipConnected ? 'bg-win-success/15 text-win-success' : 'bg-win-error/15 text-win-error'}`}>
-            {sipConnected ? 'Background listener ready' : 'Disconnected'}
+          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold flex-shrink-0 ${sipConnected ? 'bg-win-success/15 text-win-success' : 'bg-win-error/15 text-win-error'}`}>
+            {sipConnected ? 'Listener ready' : 'Disconnected'}
           </span>
         )}
         {compact && (
@@ -152,7 +152,7 @@ function MinimizedShell() {
 
         <div className="mt-4 rounded-xl border border-win-success/20 bg-win-success/10 p-3">
           <p className="text-xs font-semibold text-win-success">Background call detection active</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-win-text-secondary">
+          <p className="mt-1 text-xs leading-relaxed text-win-text-secondary">
             Minimizing the window does not stop SIP registration, inbound INVITE handling, toast notifications, or clipboard copying.
           </p>
         </div>
@@ -196,7 +196,7 @@ function MiniStat({
     <div className="rounded-xl border border-win-border bg-win-surface p-3">
       <div className="mb-2 flex items-center gap-2 text-win-text-tertiary">
         <span style={{ color }}>{icon}</span>
-        <span className="text-[10px] font-medium uppercase tracking-wider truncate">{label}</span>
+        <span className="text-xs font-medium uppercase tracking-wider truncate">{label}</span>
       </div>
       <p className="text-sm font-semibold truncate" style={{ color }}>
         {value}
