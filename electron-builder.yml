@@ -1,4 +1,6 @@
 # electron-builder config for CallerFlash
+# This file overrides settings from package.json where specified.
+# Configuration is primarily in package.json > "build" key.
 
 appId: com.callerflash.app
 productName: CallerFlash
@@ -27,5 +29,6 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: CallerFlash
 
-# Publish is handled by gh CLI in the workflow — not by electron-builder
-publish: null
+publish:
+  provider: github
+  releaseType: draft
