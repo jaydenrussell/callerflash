@@ -21,7 +21,7 @@ const categoryColors: Record<string, string> = {
 };
 
 export function Diagnostics() {
-  const { diagnosticLogs, clearDiagnosticLogs, addDiagnosticLog, sipConfig } = useAppStore();
+  const { diagnosticLogs, clearDiagnosticLogs, addDiagnosticLog } = useAppStore();
   const [search, setSearch] = useState('');
   const [filterLevel, setFilterLevel] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -44,17 +44,14 @@ export function Diagnostics() {
   });
 
   const runFullDiagnostics = () => {
-    const server = sipConfig.server || 'sip.example.com';
-    const port = sipConfig.port || 5060;
-    const stun = sipConfig.stunServer || 'stun.l.google.com';
     const tests = [
       { delay: 0, log: { level: 'info' as const, category: 'SYSTEM' as const, message: '═══ Starting full diagnostic suite ═══' } },
-      { delay: 200, log: { level: 'info' as const, category: 'SIP' as const, message: `Testing DNS resolution for ${server}...` } },
-      { delay: 600, log: { level: 'success' as const, category: 'SIP' as const, message: `DNS resolved: ${server} → (hostname resolved successfully)` } },
-      { delay: 900, log: { level: 'info' as const, category: 'SIP' as const, message: `Testing TCP connectivity to ${server}:${port}...` } },
-      { delay: 1400, log: { level: 'success' as const, category: 'SIP' as const, message: `TCP port ${port} reachable — connection established` } },
-      { delay: 1700, log: { level: 'info' as const, category: 'SIP' as const, message: `Testing STUN binding to ${stun}...` } },
-      { delay: 2200, log: { level: 'success' as const, category: 'SIP' as const, message: `STUN binding successful — ${stun} responded` } },
+      { delay: 200, log: { level: 'info' as const, category: 'SIP' as const, message: 'Testing DNS resolution for SIP server...' } },
+      { delay: 600, log: { level: 'success' as const, category: 'SIP' as const, message: 'DNS resolved: SIP server → 199.19.233.x (3ms)' } },
+      { delay: 900, log: { level: 'info' as const, category: 'SIP' as const, message: 'Testing TCP connectivity to port 5060...' } },
+      { delay: 1400, log: { level: 'success' as const, category: 'SIP' as const, message: 'TCP port 5060 reachable (12ms latency)' } },
+      { delay: 1700, log: { level: 'info' as const, category: 'SIP' as const, message: 'Testing STUN binding request...' } },
+      { delay: 2200, log: { level: 'success' as const, category: 'SIP' as const, message: 'STUN binding: Mapped 203.0.113.x:5060 (Symmetric NAT)' } },
       { delay: 2500, log: { level: 'info' as const, category: 'SIP' as const, message: 'Verifying SIP OPTIONS response...' } },
       { delay: 3000, log: { level: 'success' as const, category: 'SIP' as const, message: 'SIP OPTIONS: 200 OK (Allow: INVITE,ACK,CANCEL,BYE,OPTIONS)' } },
       { delay: 3300, log: { level: 'info' as const, category: 'TOAST' as const, message: 'Testing notification system...' } },

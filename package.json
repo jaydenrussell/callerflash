@@ -4,20 +4,21 @@
   "version": "1.4.2",
   "main": "electron/main.js",
   "author": "CallerFlash",
-  "description": "CallerFlash — SIP Client",
+  "description": "SIP-compliant client with toast notifications for any standard SIP provider",
+  "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=22.0.0"
   },
-  "packageManager": "npm@11.6.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "electron:build": "npm run build && npx electron-builder --win --x64"
+    "electron:build": "npm run build && npx electron-builder --win --x64 --publish never",
+    "electron:publish": "npm run electron:build && npx electron-builder --win --x64 --publish always"
   },
   "dependencies": {
-    "clsx": "^2.1.1",
+    "clsx": "2.1.1",
     "lucide-react": "^1.21.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
@@ -26,7 +27,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.17",
-    "@types/node": "^24.13.2",
+    "@types/node": "22.19.17",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.1",
@@ -36,5 +37,43 @@
     "typescript": "5.9.3",
     "vite": "7.3.2",
     "vite-plugin-singlefile": "2.3.0"
+  },
+  "build": {
+    "appId": "com.callerflash.app",
+    "productName": "CallerFlash",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "!node_modules"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CallerFlash",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "draft"
+    }
   }
 }

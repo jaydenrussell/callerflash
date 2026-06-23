@@ -5,7 +5,7 @@ A SIP-compliant Windows desktop client with toast notifications. Optimized for V
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/jaydenrussell/callerflash?label=stable)
 ![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/jaydenrussell/callerflash?include_prereleases&label=beta)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)
-![License](https://img.shields.io/github/license/callerflash/callerflash-sip-client)
+![License](https://img.shields.io/github/license/jaydenrussell/callerflash)
 
 ## Features
 
