@@ -2,10 +2,10 @@
 
 A SIP-compliant Windows desktop client with toast notifications. Optimized for VoIP.ms, works with any standard SIP provider.
 
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/callerflash/callerflash-sip-client?label=stable)
-![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/callerflash/callerflash-sip-client?include_prereleases&label=beta)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/jaydenrussell/callerflash?label=stable)
+![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/jaydenrussell/callerflash?include_prereleases&label=beta)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)
-![License](https://img.shields.io/github/license/callerflash/callerflash-sip-client)
+![License](https://img.shields.io/github/license/jaydenrussell/callerflash)
 
 ## Features
 
@@ -30,7 +30,7 @@ All builds are **Windows 64-bit only** (NSIS installer `.exe`).
 
 ## Quick Start (for users)
 
-1. Go to the [Releases](https://github.com/callerflash/callerflash-sip-client/releases) page
+1. Go to the [Releases](https://github.com/jaydenrussell/callerflash/releases) page
 2. Download the latest `CallerFlash-Setup-x.x.x.exe`
 3. Run the installer — no dependencies required
 4. Configure your SIP provider credentials in Settings
@@ -41,8 +41,8 @@ All builds are **Windows 64-bit only** (NSIS installer `.exe`).
 
 ```bash
 # Clone
-git clone https://github.com/callerflash/callerflash-sip-client.git
-cd callerflash-sip-client
+git clone https://github.com/jaydenrussell/callerflash.git
+cd callerflash
 
 # Install
 npm install
