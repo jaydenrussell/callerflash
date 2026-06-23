@@ -125,20 +125,37 @@ jobs:
         run: npm run build
 
       - name: Package Electron App (NSIS x64)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EP_PRE_RELEASE: ${{ needs.route.outputs.prerelease }}
-          CHANNEL: ${{ needs.route.outputs.channel }}
-        run: npx electron-builder --win --x64 --publish always
+        shell: bash
+        run: |
+          # Build the .exe only — do NOT publish here.
+          # Publishing is handled by the 'release' job below which
+          # uses the workflow token to create the tag + release atomically.
+          npx electron-builder --win --x64 --publish never
 
-  # ── Draft GitHub Release ─────────────────────────────────────────
+      - name: Store release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: callerflash-${{ needs.route.outputs.channel }}-${{ needs.route.outputs.version }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+          retention-days: 1
+
+  # ── Publish GitHub Release ───────────────────────────────────────
   release:
     name: Create GitHub Release — ${{ needs.route.outputs.channel }}
     needs: [route, build]
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: always() && needs.route.result == 'success' && needs.build.result == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v7
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: callerflash-${{ needs.route.outputs.channel }}-${{ needs.route.outputs.version }}
+          path: release
 
       - name: Generate release notes
         id: notes
@@ -168,14 +185,15 @@ jobs:
           } > release-notes.md
           echo "notes_file=release-notes.md" >> "$GITHUB_OUTPUT"
 
-      - name: Create Release
+      - name: Create tag and release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.route.outputs.version }}
-          name: "CallerFlash — ${{ needs.route.outputs.version }} (${{ needs.route.outputs.channel }})"
+          tag_name: v${{ needs.route.outputs.version }}
+          name: "CallerFlash — v${{ needs.route.outputs.version }} (${{ needs.route.outputs.channel }})"
           body_path: release-notes.md
           prerelease: ${{ needs.route.outputs.prerelease }}
           draft: false
+          make_latest: ${{ needs.route.outputs.channel == 'stable' }}
           files: |
             release/*.exe
             release/*.blockmap
