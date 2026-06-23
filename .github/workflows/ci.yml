@@ -1,0 +1,37 @@
+name: CI — Pull Request Checks
+
+on:
+  pull_request:
+    branches: [main, stable, beta, nightly]
+  push:
+    branches:
+      - 'feature/**'
+      - 'fix/**'
+
+permissions:
+  contents: read
+
+jobs:
+  lint-build:
+    name: Lint & Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          check-latest: true
+          package-manager-cache: false
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Build check
+        run: npm run build

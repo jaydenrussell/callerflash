@@ -1,0 +1,202 @@
+name: Build & Release (Stable / Beta / Nightly)
+
+on:
+  push:
+    branches:
+      - main
+      - stable
+      - beta
+      - nightly
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Release channel'
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+          - nightly
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Channel routing ──────────────────────────────────────────────
+  route:
+    name: Determine Release Channel
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.decide.outputs.channel }}
+      prerelease: ${{ steps.decide.outputs.prerelease }}
+      version: ${{ steps.decide.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          check-latest: true
+
+      - id: decide
+        name: Route to channel
+        shell: bash
+        run: |
+          CHANNEL="nightly"
+          PRERELEASE="true"
+          REF="${{ github.ref }}"
+
+          if [[ "$REF" == refs/tags/v*-beta* ]]; then
+            CHANNEL="beta"
+            PRERELEASE="true"
+          elif [[ "$REF" == refs/tags/v* ]]; then
+            CHANNEL="stable"
+            PRERELEASE="false"
+          elif [[ "$REF" == refs/heads/stable ]]; then
+            CHANNEL="stable"
+            PRERELEASE="false"
+          elif [[ "$REF" == refs/heads/beta ]]; then
+            CHANNEL="beta"
+            PRERELEASE="true"
+          elif [[ "$REF" == refs/heads/nightly ]]; then
+            CHANNEL="nightly"
+            PRERELEASE="true"
+          elif [[ "$REF" == refs/heads/main ]]; then
+            CHANNEL="nightly"
+            PRERELEASE="true"
+          fi
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            CHANNEL="${{ inputs.channel }}"
+            PRERELEASE="${{ inputs.channel != 'stable' }}"
+          fi
+
+          PKG_VER=$(node -p "require('./package.json').version")
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          if [[ "$CHANNEL" == "stable" ]]; then
+            VERSION="${PKG_VER}"
+          elif [[ "$CHANNEL" == "beta" ]]; then
+            VERSION="${PKG_VER}-beta.${SHORT_SHA}"
+          else
+            VERSION="${PKG_VER}-nightly.${SHORT_SHA}"
+          fi
+
+          echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "→ Channel: ${CHANNEL}  |  Pre-release: ${PRERELEASE}  |  Version: ${VERSION}"
+
+  # ── Build (Windows x64 only) ─────────────────────────────────────
+  build:
+    name: Build Windows x64 — ${{ needs.route.outputs.channel }}
+    needs: route
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          check-latest: true
+          package-manager-cache: false
+
+      - name: Bump version for channel
+        shell: bash
+        run: |
+          npm version "${{ needs.route.outputs.version }}" --no-git-tag-version --allow-same-version
+          echo "BUILD_VERSION=${{ needs.route.outputs.version }}" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          # Work around npm bug where optional platform-native Rollup
+          # packages are not installed correctly on Windows CI runners.
+          # See: https://github.com/npm/cli/issues/4828
+          rm -rf node_modules package-lock.json
+          npm install
+
+      - name: Build UI (Vite)
+        run: npm run build
+
+      - name: Package Electron App (NSIS x64)
+        shell: bash
+        run: |
+          # Build the .exe only — do NOT publish here.
+          # Publishing is handled by the 'release' job below which
+          # uses the workflow token to create the tag + release atomically.
+          npx electron-builder --win --x64 --publish never
+
+      - name: Store release artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: callerflash-${{ needs.route.outputs.channel }}-${{ needs.route.outputs.version }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+          retention-days: 1
+
+  # ── Publish GitHub Release ───────────────────────────────────────
+  release:
+    name: Create GitHub Release — ${{ needs.route.outputs.channel }}
+    needs: [route, build]
+    if: always() && needs.route.result == 'success' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: callerflash-${{ needs.route.outputs.channel }}-${{ needs.route.outputs.version }}
+          path: release
+
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        run: |
+          CHANNEL="${{ needs.route.outputs.channel }}"
+          VERSION="${{ needs.route.outputs.version }}"
+          {
+            echo "### CallerFlash ${VERSION}  (${CHANNEL})"
+            echo ""
+            echo "**Channel:** \`${CHANNEL}\`"
+            echo "**Download:** See Assets below → \`.exe\` installer"
+            echo ""
+            echo "---"
+            echo "### 🔐 Security Verification"
+            echo ""
+            echo "1. **Authenticode** — signed Windows binary"
+            echo "2. **SHA-256** — checksum in \`SHA256SUMS\`"
+            echo "3. **Ed25519** — detached signature in \`.sig\`"
+            echo ""
+            echo "Verify with:"
+            echo "\`\`\`sh"
+            echo "sha256sum -c SHA256SUMS --ignore-missing"
+            echo "openssl pkeyutl -verify -rawin -pubin -inkey release-signing.pub \\"
+            echo "    -in SHA256SUMS -sigfile CallerFlash-Setup-${VERSION}.exe.sig"
+            echo "\`\`\`"
+          } > release-notes.md
+          echo "notes_file=release-notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.route.outputs.version }}
+          name: "CallerFlash — v${{ needs.route.outputs.version }} (${{ needs.route.outputs.channel }})"
+          body_path: release-notes.md
+          prerelease: ${{ needs.route.outputs.prerelease }}
+          draft: false
+          make_latest: ${{ needs.route.outputs.channel == 'stable' }}
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
