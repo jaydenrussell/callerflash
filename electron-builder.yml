@@ -1,25 +1,16 @@
-# electron-builder config for CallerFlash
-# This file overrides settings from package.json where specified.
-# Configuration is primarily in package.json > "build" key.
-
 appId: com.callerflash.app
 productName: CallerFlash
-
 directories:
   output: release
   buildResources: build
-
 files:
   - dist/**/*
   - electron/**/*
-  - "!node_modules/**/*"
-
 win:
   target:
     - target: nsis
       arch:
         - x64
-
 nsis:
   oneClick: false
   perMachine: false
@@ -28,7 +19,3 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: CallerFlash
-
-publish:
-  provider: github
-  releaseType: draft
