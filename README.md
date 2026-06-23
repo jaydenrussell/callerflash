@@ -1,53 +1,71 @@
 # CallerFlash
 
-**SIP client with toast notifications — works with any standard SIP provider.**
+A SIP-compliant Windows desktop client with toast notifications. Optimized for VoIP.ms, works with any standard SIP provider.
 
-[![CI](https://github.com/jaydenrussell/callerflash/actions/workflows/ci.yml/badge.svg)](https://github.com/jaydenrussell/callerflash/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/jaydenrussell/callerflash?include_prereleases&label=latest)](https://github.com/jaydenrussell/callerflash/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
----
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/callerflash/callerflash-sip-client?label=stable)
+![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/callerflash/callerflash-sip-client?include_prereleases&label=beta)
+![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)
+![License](https://img.shields.io/github/license/callerflash/callerflash-sip-client)
 
 ## Features
 
-- **Universal SIP Support** — Standard SIP protocol over UDP, TCP, or TLS
-- **Toast Notifications** — Native Windows 11-style notifications with caller ID, fully customizable
-- **Clipboard Auto-Copy** — Automatically copies caller number for instant paste into Acuity Scheduler
-- **Full Diagnostics** — SIP, toast, and system logging with export
-- **Auto Update** — GitHub-based update channels (stable, beta, nightly) with SHA-256 + Ed25519 verification
-- **Start Minimized** — Background mode monitors calls while the window stays hidden
+- **Universal SIP** — UDP, TCP, or TLS; works with VoIP.ms, Twilio, Telnyx, Bandwidth, and any RFC-compliant SIP provider
+- **Toast notifications** — fully customizable font, colors, position, duration, border radius, and opacity
+- **Auto clipboard copy** — caller number automatically copied for instant paste into Acuity Scheduler
+- **Draggable toasts** — reposition any notification; position persists for future calls
+- **Start with Windows** — optionally launch minimized, calls still detected in background
+- **Auto-update** — three channels (stable, beta, nightly); signed releases with SHA-256 + Ed25519 verification
+- **Full diagnostics** — SIP, toast, and system logs with export
+- **Security hardened** — CSP, credential redaction, SIP input sanitization, clipboard injection protection
 
-## Download
+## Releases
 
-Get the latest installer from the **[Releases](https://github.com/jaydenrussell/callerflash/releases)** page.
+| Channel | Description | How to get it |
+|---------|-------------|---------------|
+| **Stable** | Production-ready, tested for 7+ days | `git tag v1.4.2 && git push origin v1.4.2` |
+| **Beta** | Latest features, 1+ day soak | `git tag v1.5.0-beta.1 && git push origin v1.5.0-beta.1` |
+| **Nightly** | Automated builds from latest `main` | Push to `nightly` branch triggers auto-build |
 
-| Channel | Description |
-|---------|-------------|
-| **Stable** | Production-ready, 7-day soak before release |
-| **Beta** | Feature preview, pre-release |
-| **Nightly** | Bleeding edge, built from every push to `main` |
+All builds are **Windows 64-bit only** (NSIS installer `.exe`).
+
+## Quick Start (for users)
+
+1. Go to the [Releases](https://github.com/callerflash/callerflash-sip-client/releases) page
+2. Download the latest `CallerFlash-Setup-x.x.x.exe`
+3. Run the installer — no dependencies required
+4. Configure your SIP provider credentials in Settings
+5. Click **Connect** on the Dashboard
+6. When calls come in, toasts appear and numbers auto-copy to your clipboard
 
 ## Development
 
 ```bash
-git clone https://github.com/jaydenrussell/callerflash.git
-cd callerflash
+# Clone
+git clone https://github.com/callerflash/callerflash-sip-client.git
+cd callerflash-sip-client
+
+# Install
 npm install
-npm run dev        # Start dev server
-npm run build      # Production build
-npm run electron:build  # Package Windows 64-bit .exe
+
+# Dev server
+npm run dev
+
+# Build for production
+npm run build
+
+# Build Windows installer (requires Windows)
+npm run electron:build
 ```
-
-Requires **Node.js ≥ 24** and **Windows** for packaging.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for branch strategy and PR guidelines.
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for the full threat model, update verification procedures, and vulnerability reporting.
+See [SECURITY.md](SECURITY.md) for the full threat model, update verification pipeline, and vulnerability disclosure process.
+
+Every release is protected by three independent verification layers:
+1. **Authenticode code signing** (Windows publisher identity)
+2. **SHA-256 checksum** (transport integrity)
+3. **Ed25519 detached signature** (pinned public key — never fetched from network)
 
 ## License
 
-[MIT](LICENSE) — Free and open source.
+MIT

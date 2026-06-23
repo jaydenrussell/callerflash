@@ -7,8 +7,8 @@ Since you can only use GitHub's web interface, follow these exact steps.
 ## Step 1: Create the repository
 
 1. Go to [github.com/new](https://github.com/new)
-2. **Repository name:** `callerflash` (already created)
-3. **Description:** `SIP-compliant client with toast notifications`
+2. **Repository name:** `callerflash-sip-client`
+3. **Description:** `SIP-compliant client with toast notifications for any standard SIP provider`
 4. **Public**
 5. Do NOT check anything — leave README, .gitignore, license all UNCHECKED
 6. Click **Create repository**
@@ -17,8 +17,11 @@ Since you can only use GitHub's web interface, follow these exact steps.
 
 On your new empty repository page:
 
-1. Click the link that says **"uploading an existing file"** (below the code block)
-2. **Drag and drop ALL of these files** from the extracted ZIP folder into the upload area:
+1. Scroll down to the section that says **"…or push an existing repository from the command line"**
+2. Click the link that says **"uploading an existing file"** (under the code block)
+3. **Drag and drop** ALL of these files from the extracted ZIP folder into the upload area:
+
+> **Critical: Upload ALL of these files (not the folders — just the files):**
 
 ```
 README.md
@@ -53,58 +56,74 @@ src/components/AutoUpdate.tsx
 src/components/About.tsx
 ```
 
-3. Add commit message: `Initial commit`
-4. Select **"Commit directly to the main branch"**
-5. Click **Commit changes**
+4. Add a commit message: `Initial commit`
+5. Select **"Commit directly to the main branch"**
+6. Click **Commit changes**
 
-## Step 3: Create the `.github/workflows/release.yml` file
+## Step 3: Create the hidden `.github` folder (Critical)
 
-The workflow file must live in a `.github/workflows/` folder. Since you can't upload dotfiles via the web uploader, you create it manually:
+The workflow file won't work unless it's inside a folder called `.github/workflows/`. Here's how to create it:
 
-1. Click the **Add file** dropdown button (top-right of your repo)
+1. On your repository page, click the **Add file** dropdown button (top-right)
 2. Select **"Create new file"**
 3. In the **"Name your file…"** field, type exactly:
    ```
    .github/workflows/release.yml
    ```
-   (GitHub automatically creates the folders)
-4. Open the `.github-workflow.yml` file you uploaded earlier, **copy its entire content**
-5. Paste it into the GitHub editor
-6. Click **Commit new file**
+   *(GitHub will auto-create the .github and workflows folders)*
+4. Go back to this project, open the file called **`.github-workflow.yml`** in the file list above
+5. Right-click it, click **"Open link in new tab"** or **"View raw"**
+6. **Copy the ENTIRE content** of that file
+7. Go back to GitHub, **paste** all of it into the editor
+8. Add a commit message: `Add CI/CD workflow`
+9. Click **Commit new file**
 
-## Step 4: Create `.gitignore`
+## Step 4: Rename gitignore to .gitignore
 
-1. Click **Add file → Create new file**
-2. Name it: `.gitignore`
-3. Open `gitignore.txt` from your upload, **copy its content**
-4. Paste it, click **Commit new file**
-5. **Delete the old `gitignore.txt`** — click on it in the file list, click the trash icon, commit
+1. Click the **Add file** dropdown → **Create new file**
+2. Name it exactly: `.gitignore`
+3. Open the `gitignore.txt` file you uploaded earlier, copy its content
+4. Paste it into the new file
+5. Commit with message: `Add gitignore`
+6. Now **delete** the old `gitignore.txt`:
+   - Go to your file list
+   - Click on `gitignore.txt`
+   - Click the **trash icon** (Delete this file)
+   - Commit
 
 ## Step 5: Create the release branches
 
-1. Click the **branch selector** dropdown (top-left, says **"main"**)
+1. Click the **branch selector** dropdown at the top-left (it currently says **"main"**)
 2. Type: `nightly` and click **"Create branch: nightly from main"**
-3. Repeat: type `beta` → **Create branch**
-4. Repeat: type `stable` → **Create branch**
-5. Switch back to **main**
+3. Click the branch dropdown again, type: `beta`, click **"Create branch: beta from main"**
+4. Click the branch dropdown again, type: `stable`, click **"Create branch: stable from main"**
+5. Click the branch dropdown and switch back to **main**
 
 ## Step 6: Trigger your first build
 
-1. Go to the **Actions** tab
-2. Click **"Build and Release"** on the left sidebar
-3. Click **"Run workflow" → Branch: nightly → Run workflow**
-4. Wait ~3 minutes, then check your **Releases** tab
+1. Go to the **Actions** tab at the top of your repository
+2. On the left sidebar, click **"Build and Release"**
+3. Click the **"Run workflow"** dropdown button (right side)
+4. In the **Branch** dropdown, select `nightly`
+5. Click **"Run workflow"**
+
+The build will start. After about 2-3 minutes, go to your **Releases** tab to find the first `.exe` installer.
 
 ---
 
-## How releases work
+## How to release updates
 
-| Branch | Channel | Version | Published as |
-|--------|---------|---------|-------------|
-| `nightly` | Nightly | `1.4.2-nightly.1` | Pre-release |
-| `beta` | Beta | `1.4.2-beta.1` | Pre-release |
-| `stable` | Stable | `1.4.2` | Full release |
-| Tag `v1.5.0` | Stable | `1.5.0` | Full release |
-| Tag `v1.5.0-beta.1` | Beta | `1.5.0-beta.1` | Pre-release |
+Once everything is set up:
 
-The workflow always uses **Node.js latest** (not pinned to any specific version).
+| To release | Do this on GitHub |
+|------------|------------------|
+| **Nightly** | Push code to `nightly` branch (auto-builds) |
+| **Beta** | Push code to `beta` branch (auto-builds) |
+| **Stable** | Push code to `stable` branch, OR create a tag like `v1.4.2` |
+
+To push updates to a branch via web:
+
+1. Go to the branch (e.g., `nightly`)
+2. Click **Add file → Upload files**
+3. Upload the updated files
+4. Commit

@@ -74,7 +74,7 @@ export function Dashboard() {
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-win-text">Dashboard</h2>
           <p className="text-xs text-win-text-secondary mt-1">
-            CallerFlash — Monitor & Control
+            SIP Client — Monitor & Control
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

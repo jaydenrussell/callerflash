@@ -7,4 +7,3 @@ Thumbs.db
 build/*.ico
 build/*.png
 !build/*.svg
-package-lock.json
