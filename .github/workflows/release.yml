@@ -133,7 +133,7 @@ jobs:
           npx electron-builder --win --x64 --publish never
 
       - name: Store release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: callerflash-${{ needs.route.outputs.channel }}-${{ needs.route.outputs.version }}
           path: |
@@ -152,7 +152,7 @@ jobs:
       contents: write
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: callerflash-${{ needs.route.outputs.channel }}-${{ needs.route.outputs.version }}
           path: release
