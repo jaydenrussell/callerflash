@@ -59,7 +59,7 @@ export function CallHistory() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-2xl font-bold text-win-text">Call History</h2>
+          <h2 className="text-xl font-bold text-win-text">Call History</h2>
           <p className="text-sm text-win-text-secondary mt-1">
             {callHistory.length} total calls • Click any number to copy for Acuity Scheduler
           </p>

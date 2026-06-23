@@ -39,7 +39,7 @@ function TitleBar({ compact }: { compact: boolean }) {
           </svg>
         </div>
         <span className="text-xs text-win-text-secondary truncate">
-          {compact ? 'CallerFlash' : 'CallerFlash — SIP Client'}
+          {compact ? 'CallerFlash' : 'CallerFlash'}
         </span>
         {!compact && (
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold flex-shrink-0 ${sipConnected ? 'bg-win-success/15 text-win-success' : 'bg-win-error/15 text-win-error'}`}>
