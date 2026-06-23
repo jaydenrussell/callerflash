@@ -183,7 +183,7 @@ const defaultUpdateInfo: UpdateInfo = {
   lastChecked: null,
   autoUpdate: true,
   updateChannel: 'stable',
-  githubRepo: 'https://github.com/callerflash/callerflash-sip-client',
+  githubRepo: 'https://github.com/jaydenrussell/callerflash',
   releaseNotes: '',
   downloadProgress: 0,
   isDownloading: false,
