@@ -24,6 +24,7 @@ permissions:
   contents: write
 
 jobs:
+  # ── Channel routing ──────────────────────────────────────────────
   route:
     name: Determine Release Channel
     runs-on: ubuntu-latest
@@ -32,9 +33,14 @@ jobs:
       prerelease: ${{ steps.decide.outputs.prerelease }}
       version: ${{ steps.decide.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          check-latest: true
 
       - id: decide
         name: Route to channel
@@ -84,19 +90,21 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "→ Channel: ${CHANNEL}  |  Pre-release: ${PRERELEASE}  |  Version: ${VERSION}"
 
+  # ── Build (Windows x64 only) ─────────────────────────────────────
   build:
     name: Build Windows x64 — ${{ needs.route.outputs.channel }}
     needs: route
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
           check-latest: true
+          package-manager-cache: false
 
       - name: Bump version for channel
         shell: bash
@@ -105,7 +113,13 @@ jobs:
           echo "BUILD_VERSION=${{ needs.route.outputs.version }}" >> $GITHUB_ENV
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          # Work around npm bug where optional platform-native Rollup
+          # packages are not installed correctly on Windows CI runners.
+          # See: https://github.com/npm/cli/issues/4828
+          rm -rf node_modules package-lock.json
+          npm install
 
       - name: Build UI (Vite)
         run: npm run build
@@ -117,13 +131,14 @@ jobs:
           CHANNEL: ${{ needs.route.outputs.channel }}
         run: npx electron-builder --win --x64 --publish always
 
+  # ── Draft GitHub Release ─────────────────────────────────────────
   release:
     name: Create GitHub Release — ${{ needs.route.outputs.channel }}
     needs: [route, build]
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Generate release notes
         id: notes
@@ -138,7 +153,7 @@ jobs:
             echo "**Download:** See Assets below → \`.exe\` installer"
             echo ""
             echo "---"
-            echo "### Security Verification"
+            echo "### 🔐 Security Verification"
             echo ""
             echo "1. **Authenticode** — signed Windows binary"
             echo "2. **SHA-256** — checksum in \`SHA256SUMS\`"
