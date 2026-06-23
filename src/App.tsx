@@ -1,0 +1,239 @@
+import { useEffect, useState } from 'react';
+import { Sidebar } from './components/Sidebar';
+import { Dashboard } from './components/Dashboard';
+import { CallHistory } from './components/CallHistory';
+import { SipSettings } from './components/SipSettings';
+import { ToastSettings } from './components/ToastSettings';
+import { Diagnostics } from './components/Diagnostics';
+import { AutoUpdate } from './components/AutoUpdate';
+import { About } from './components/About';
+import { ToastContainer } from './components/ToastNotification';
+import { useAppStore } from './store/useAppStore';
+import { AppWindow, Minus, PhoneIncoming, Square, Undo2, Wifi, WifiOff, X } from 'lucide-react';
+import { simulateIncomingCall } from './utils/simulateIncomingCall';
+
+// Threshold below which the sidebar collapses to icons only
+const SIDEBAR_COLLAPSE_BREAKPOINT = 720;
+
+function useWindowWidth() {
+  const [width, setWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1280));
+
+  useEffect(() => {
+    const handleResize = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return width;
+}
+
+function TitleBar({ compact }: { compact: boolean }) {
+  const { setIsMinimized, addDiagnosticLog, sipConnected } = useAppStore();
+
+  return (
+    <div className="h-9 bg-win-card border-b border-win-border flex items-center justify-between select-none flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 min-w-0 flex-1">
+        <div className="w-4 h-4 rounded bg-gradient-to-br from-win-accent to-blue-600 flex items-center justify-center flex-shrink-0">
+          <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="3">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+          </svg>
+        </div>
+        <span className="text-xs text-win-text-secondary truncate">
+          {compact ? 'CallerFlash' : 'CallerFlash — SIP Client'}
+        </span>
+        {!compact && (
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold flex-shrink-0 ${sipConnected ? 'bg-win-success/15 text-win-success' : 'bg-win-error/15 text-win-error'}`}>
+            {sipConnected ? 'Background listener ready' : 'Disconnected'}
+          </span>
+        )}
+        {compact && (
+          <span
+            className={`w-2 h-2 rounded-full flex-shrink-0 ${sipConnected ? 'bg-win-success' : 'bg-win-error'}`}
+            title={sipConnected ? 'Background listener ready' : 'Disconnected'}
+          />
+        )}
+      </div>
+      <div className="flex h-full flex-shrink-0">
+        <button
+          onClick={() => {
+            setIsMinimized(true);
+            addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Main window minimized to background mode' });
+          }}
+          className="px-3 sm:px-4 h-full hover:bg-win-surface-hover transition-colors flex items-center"
+          title="Minimize"
+        >
+          <Minus className="w-3.5 h-3.5 text-win-text-secondary" />
+        </button>
+        <button
+          className="px-3 sm:px-4 h-full hover:bg-win-surface-hover transition-colors flex items-center"
+          title="Window mode"
+        >
+          <Square className="w-3 h-3 text-win-text-secondary" />
+        </button>
+        <button
+          onClick={() => {
+            setIsMinimized(true);
+            addDiagnosticLog({ level: 'warning', category: 'SYSTEM', message: 'Window hidden; SIP monitoring continues in background mode' });
+          }}
+          className="px-3 sm:px-4 h-full hover:bg-red-600 transition-colors flex items-center group"
+          title="Hide to background"
+        >
+          <X className="w-3.5 h-3.5 text-win-text-secondary group-hover:text-white" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MainContent() {
+  const { activeTab } = useAppStore();
+
+  const content = {
+    dashboard: <Dashboard />,
+    calls: <CallHistory />,
+    settings: <SipSettings />,
+    toast: <ToastSettings />,
+    diagnostics: <Diagnostics />,
+    update: <AutoUpdate />,
+    about: <About />,
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 min-w-0">
+      {content[activeTab]}
+    </div>
+  );
+}
+
+function MinimizedShell() {
+  const { sipConnected, sipRegistered, setIsMinimized, addDiagnosticLog, appPreferences } = useAppStore();
+
+  return (
+    <div className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,#12324d_0%,#202020_38%,#141414_100%)]">
+      <div className="absolute inset-0 bg-black/20" />
+      <div className="absolute inset-x-3 sm:inset-x-auto bottom-3 sm:bottom-6 sm:right-6 z-20 sm:w-[360px] rounded-2xl border border-win-border bg-win-card/95 p-4 sm:p-5 shadow-2xl backdrop-blur-xl">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl bg-win-accent/15 text-win-accent flex-shrink-0">
+              <AppWindow className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-win-text">CallerFlash is minimized</p>
+              <p className="mt-1 text-xs text-win-text-secondary">
+                Incoming calls still trigger toast alerts and clipboard auto-copy while the window is hidden.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setIsMinimized(false);
+              addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Main window restored from background mode' });
+            }}
+            className="rounded-lg border border-win-border bg-win-surface px-2.5 py-1.5 text-xs font-medium text-win-text-secondary transition-colors hover:bg-win-surface-hover hover:text-win-text flex-shrink-0"
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <MiniStat
+            icon={sipConnected ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+            label="SIP Session"
+            value={sipConnected ? (sipRegistered ? 'Registered' : 'Connecting') : 'Offline'}
+            color={sipConnected ? (sipRegistered ? '#6ccb5f' : '#fcb827') : '#ff6b6b'}
+          />
+          <MiniStat
+            icon={<AppWindow className="h-4 w-4" />}
+            label="Launch Mode"
+            value={appPreferences.startMinimized ? 'Start minimized' : 'Normal start'}
+            color="#60cdff"
+          />
+        </div>
+
+        <div className="mt-4 rounded-xl border border-win-success/20 bg-win-success/10 p-3">
+          <p className="text-xs font-semibold text-win-success">Background call detection active</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-win-text-secondary">
+            Minimizing the window does not stop SIP registration, inbound INVITE handling, toast notifications, or clipboard copying.
+          </p>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              setIsMinimized(false);
+              addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Main window restored from background mode' });
+            }}
+            className="flex-1 min-w-[140px] rounded-xl bg-win-accent px-4 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-win-accent-hover"
+          >
+            Restore Window
+          </button>
+          <button
+            onClick={() => simulateIncomingCall('background')}
+            disabled={!sipConnected}
+            className="flex items-center gap-2 rounded-xl border border-win-accent/20 bg-win-accent/10 px-4 py-2.5 text-sm font-medium text-win-accent transition-colors hover:bg-win-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <PhoneIncoming className="h-4 w-4" />
+            Test Call
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({
+  icon,
+  label,
+  value,
+  color,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <div className="rounded-xl border border-win-border bg-win-surface p-3">
+      <div className="mb-2 flex items-center gap-2 text-win-text-tertiary">
+        <span style={{ color }}>{icon}</span>
+        <span className="text-[10px] font-medium uppercase tracking-wider truncate">{label}</span>
+      </div>
+      <p className="text-sm font-semibold truncate" style={{ color }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+export default function App() {
+  const { isMinimized, addDiagnosticLog, appPreferences } = useAppStore();
+  const width = useWindowWidth();
+  const sidebarCollapsed = width < SIDEBAR_COLLAPSE_BREAKPOINT;
+  const titleCompact = width < 520;
+
+  useEffect(() => {
+    if (appPreferences.startMinimized) {
+      addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Application launched in minimized background mode' });
+    }
+    if (appPreferences.startWithWindows) {
+      addDiagnosticLog({ level: 'info', category: 'SYSTEM', message: 'Start with Windows preference loaded' });
+    }
+  }, []);
+
+  return (
+    <div className="h-screen w-screen flex flex-col bg-win-bg overflow-hidden min-w-[360px]">
+      {isMinimized ? (
+        <MinimizedShell />
+      ) : (
+        <>
+          <TitleBar compact={titleCompact} />
+          <div className="flex flex-1 overflow-hidden min-h-0">
+            <Sidebar collapsed={sidebarCollapsed} />
+            <MainContent />
+          </div>
+        </>
+      )}
+      <ToastContainer />
+    </div>
+  );
+}

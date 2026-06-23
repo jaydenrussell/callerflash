@@ -1,0 +1,385 @@
+import { useState } from 'react';
+import {
+  Palette, Bell, RotateCcw, Save,
+  Clock, PhoneIncoming, Undo2
+} from 'lucide-react';
+import { useAppStore, type ToastConfig } from '../store/useAppStore';
+
+const fontFamilies = [
+  'Inter', 'Segoe UI', 'Arial', 'Helvetica', 'Roboto',
+  'Verdana', 'Georgia', 'Courier New', 'Consolas',
+];
+
+const positionOptions = [
+  { value: 'top-left', label: 'Top Left' },
+  { value: 'top-right', label: 'Top Right' },
+  { value: 'bottom-left', label: 'Bottom Left' },
+  { value: 'bottom-right', label: 'Bottom Right' },
+];
+
+export function ToastSettings() {
+  const {
+    toastConfig, setToastConfig, addToast, addCallRecord, addDiagnosticLog,
+    toastDragPosition, setToastDragPosition,
+  } = useAppStore();
+  const [saved, setSaved] = useState(false);
+
+  const update = (updates: Partial<ToastConfig>) => {
+    setToastConfig(updates);
+  };
+
+  const handleSave = () => {
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+    addDiagnosticLog({
+      level: 'success',
+      category: 'TOAST',
+      message: 'Toast configuration saved',
+    });
+  };
+
+  const handleReset = () => {
+    setToastConfig({
+      fontSize: 16,
+      fontFamily: 'Inter',
+      textColor: '#ffffff',
+      backgroundColor: '#1a1a2e',
+      accentColor: '#60cdff',
+      duration: 8,
+      position: 'top-right',
+      soundEnabled: true,
+      autoCopyToClipboard: true,
+      showCallerName: true,
+      showTimestamp: true,
+      maxWidth: 420,
+      borderRadius: 12,
+      opacity: 95,
+    });
+    setToastDragPosition(null);
+    addDiagnosticLog({
+      level: 'info',
+      category: 'TOAST',
+      message: 'Toast configuration reset to defaults',
+    });
+  };
+
+  const handlePreview = () => {
+    const record = {
+      id: crypto.randomUUID(),
+      callerNumber: '(514) 555-0199',
+      callerName: 'Preview Caller',
+      timestamp: new Date(),
+      duration: 0,
+      direction: 'inbound' as const,
+      status: 'answered' as const,
+    };
+    addCallRecord(record);
+    addToast(record);
+    addDiagnosticLog({
+      level: 'info',
+      category: 'TOAST',
+      message: 'Toast preview triggered',
+    });
+  };
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl font-bold text-win-text">Toast Configuration</h2>
+          <p className="text-xs text-win-text-secondary mt-1">
+            Customize how incoming call notifications appear
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handlePreview}
+            className="flex items-center gap-2 px-3.5 py-2 bg-win-accent/15 hover:bg-win-accent/25 text-win-accent rounded-lg text-sm font-medium transition-colors border border-win-accent/20"
+          >
+            <PhoneIncoming className="w-4 h-4" />
+            Test Toast
+          </button>
+          <button
+            onClick={handleReset}
+            className="flex items-center gap-2 px-3.5 py-2 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm font-medium transition-colors border border-win-border"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Reset
+          </button>
+          <button
+            onClick={handleSave}
+            className="flex items-center gap-2 px-4 py-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors"
+          >
+            <Save className="w-4 h-4" />
+            {saved ? 'Saved!' : 'Save'}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Appearance — combines typography & colors */}
+        <Section icon={<Palette className="w-4 h-4" />} title="Appearance" desc="Fonts, colors, and shape">
+          <div className="space-y-4">
+            <SliderField
+              label="Font Size"
+              value={toastConfig.fontSize}
+              min={10}
+              max={28}
+              step={1}
+              unit="px"
+              onChange={(v) => update({ fontSize: v })}
+            />
+
+            <InputField label="Font Family">
+              <div className="relative">
+                <select
+                  value={toastConfig.fontFamily}
+                  onChange={(e) => update({ fontFamily: e.target.value })}
+                  className="w-full px-3 py-2 bg-win-card border border-win-border rounded-lg text-sm text-win-text focus:outline-none focus:border-win-accent transition-colors appearance-none pr-10"
+                  style={{ fontFamily: toastConfig.fontFamily }}
+                >
+                  {fontFamilies.map((font) => (
+                    <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>
+                  ))}
+                </select>
+                <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-win-text-tertiary pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </div>
+            </InputField>
+
+            <div className="grid grid-cols-3 gap-3">
+              <ColorField
+                label="Text"
+                value={toastConfig.textColor}
+                onChange={(v) => update({ textColor: v })}
+              />
+              <ColorField
+                label="Background"
+                value={toastConfig.backgroundColor}
+                onChange={(v) => update({ backgroundColor: v })}
+              />
+              <ColorField
+                label="Accent"
+                value={toastConfig.accentColor}
+                onChange={(v) => update({ accentColor: v })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <SliderField
+                label="Corner Radius"
+                value={toastConfig.borderRadius}
+                min={0}
+                max={24}
+                step={1}
+                unit="px"
+                onChange={(v) => update({ borderRadius: v })}
+              />
+              <SliderField
+                label="Opacity"
+                value={toastConfig.opacity}
+                min={50}
+                max={100}
+                step={1}
+                unit="%"
+                onChange={(v) => update({ opacity: v })}
+              />
+            </div>
+
+            <SliderField
+              label="Max Width"
+              value={toastConfig.maxWidth}
+              min={300}
+              max={600}
+              step={10}
+              unit="px"
+              onChange={(v) => update({ maxWidth: v })}
+            />
+          </div>
+        </Section>
+
+        {/* Position & Timing */}
+        <Section icon={<Clock className="w-4 h-4" />} title="Position & Timing" desc="Where and how long toasts appear">
+          <div className="space-y-4">
+            <SliderField
+              label="Duration"
+              value={toastConfig.duration}
+              min={3}
+              max={30}
+              step={1}
+              unit="sec"
+              onChange={(v) => update({ duration: v })}
+            />
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium text-win-text-secondary">Default Position</label>
+                {toastDragPosition && (
+                  <button
+                    onClick={() => {
+                      setToastDragPosition(null);
+                      addDiagnosticLog({ level: 'info', category: 'TOAST', message: 'Toast position reset to default corner' });
+                    }}
+                    className="flex items-center gap-1 text-xs text-win-warning hover:text-win-warning/80 transition-colors"
+                  >
+                    <Undo2 className="w-3 h-3" />
+                    Reset drag position
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {positionOptions.map((pos) => (
+                  <button
+                    key={pos.value}
+                    onClick={() => {
+                      update({ position: pos.value as any });
+                      setToastDragPosition(null);
+                    }}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      toastConfig.position === pos.value && !toastDragPosition
+                        ? 'bg-win-accent/20 text-win-accent border border-win-accent/30'
+                        : 'bg-win-card text-win-text-secondary hover:bg-win-surface-hover border border-win-border/50'
+                    }`}
+                  >
+                    {pos.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-win-text-tertiary mt-2 leading-relaxed">
+                Tip: drag any toast to set a custom position — it's saved for future calls.
+              </p>
+            </div>
+          </div>
+        </Section>
+
+        {/* Behavior */}
+        <Section icon={<Bell className="w-4 h-4" />} title="Behavior" desc="Sound, clipboard, and display options">
+          <div className="space-y-2">
+            <ToggleField
+              label="Sound enabled"
+              value={toastConfig.soundEnabled}
+              onChange={(v) => update({ soundEnabled: v })}
+            />
+            <ToggleField
+              label="Auto-copy number to clipboard"
+              value={toastConfig.autoCopyToClipboard}
+              onChange={(v) => update({ autoCopyToClipboard: v })}
+            />
+            <ToggleField
+              label="Show caller name"
+              value={toastConfig.showCallerName}
+              onChange={(v) => update({ showCallerName: v })}
+            />
+            <ToggleField
+              label="Show timestamp"
+              value={toastConfig.showTimestamp}
+              onChange={(v) => update({ showTimestamp: v })}
+            />
+          </div>
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+function Section({ icon, title, desc, children }: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-win-surface rounded-xl border border-win-border p-4">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-win-accent">{icon}</span>
+        <h3 className="text-sm font-semibold text-win-text">{title}</h3>
+      </div>
+      <p className="text-xs text-win-text-tertiary mb-3">{desc}</p>
+      {children}
+    </div>
+  );
+}
+
+function InputField({ label, children }: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-win-text-secondary mb-1.5">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function SliderField({ label, value, min, max, step, unit, onChange }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-xs font-medium text-win-text-secondary">{label}</label>
+        <span className="text-xs font-semibold text-win-accent">{value}{unit}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="w-full"
+      />
+    </div>
+  );
+}
+
+function ColorField({ label, value, onChange }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-win-text-secondary mb-1.5">{label}</label>
+      <div className="relative h-10 rounded-lg border border-win-border bg-win-card overflow-hidden">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 w-full h-full cursor-pointer opacity-0"
+        />
+        <div className="absolute inset-2 rounded pointer-events-none" style={{ backgroundColor: value }} />
+        <div className="absolute bottom-1 left-2 right-2 text-xs font-mono text-win-text-secondary bg-black/40 px-1.5 py-0.5 rounded pointer-events-none truncate">
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ToggleField({ label, value, onChange }: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      className="flex w-full items-center justify-between rounded-lg border border-win-border/50 bg-win-card px-3 py-2.5 transition-colors hover:border-win-border hover:bg-win-surface-hover"
+    >
+      <span className="text-sm text-win-text">{label}</span>
+      <div className={`relative h-[22px] w-10 rounded-full transition-colors flex-shrink-0 ${value ? 'bg-win-accent' : 'bg-win-border'}`}>
+        <div className={`absolute top-[3px] h-4 w-4 rounded-full bg-white shadow transition-transform ${value ? 'translate-x-[21px]' : 'translate-x-[3px]'}`} />
+      </div>
+    </button>
+  );
+}

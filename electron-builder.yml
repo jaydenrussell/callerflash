@@ -1,0 +1,62 @@
+# CallerFlash — electron-builder configuration
+# 64-bit Windows only. No 32-bit, no ARM, no Mac/Linux.
+
+appId: com.callerflash.app
+productName: CallerFlash
+copyright: Copyright © 2025 CallerFlash Contributors
+
+directories:
+  buildResources: build
+  output: release
+
+files:
+  - dist/**/*
+  - electron/**/*
+  - "!node_modules/**/*"
+  - node_modules/electron-updater/**/*
+
+# ── Windows x64 only ─────────────────────────────────────────────
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: "CallerFlash-Setup-${version}-x64.${ext}"
+  # Code-signing (Authenticode) — set via environment variables:
+  #   CSC_LINK     = path to .pfx or base64-encoded .pfx
+  #   CSC_KEY_PASSWORD = password for the .pfx
+  #   CSC_FOR_PULL_REQUEST = true  (if signing on PRs)
+  signingHashAlgorithms:
+    - sha256
+  # Enable signing timestamp for long-term validity
+  rfc3161TimeStampServer: "http://timestamp.digicert.com"
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: CallerFlash
+  # Require 64-bit Windows
+  include: build/installer.nsh
+
+# ── Auto-updater ─────────────────────────────────────────────────
+publish:
+  provider: github
+  owner: callerflash
+  repo: callerflash-sip-client
+  releaseType: release
+  # For beta/nightly, the workflow overrides `releaseType` to "prerelease"
+
+# ── Don't bundle these (they're for build-time only) ─────────────
+extraMetadata:
+  main: electron/main.cjs
+
+# ── Compression ──────────────────────────────────────────────────
+compression: maximum
