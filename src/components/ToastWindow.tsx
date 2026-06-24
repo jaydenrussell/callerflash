@@ -69,13 +69,13 @@ export function ToastWindow() {
   }, []);
 
   const dismiss = useCallback((id: string) => {
-    setActiveToasts((prev) => prev.filter((t) => t.id !== id));
-    // Auto-hide the window when the last toast clears.
     setActiveToasts((prev) => {
-      if (prev.length === 0) {
+      const next = prev.filter((t) => t.id !== id);
+      // Auto-hide the window when the last toast clears.
+      if (next.length === 0) {
         window.callerflash?.toast?.hide?.();
       }
-      return prev;
+      return next;
     });
   }, []);
 

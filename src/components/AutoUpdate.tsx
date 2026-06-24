@@ -77,7 +77,13 @@ function matchesChannel(
   return false;
 }
 
-type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'ready' | 'installing';
+type UpdatePhase =
+  | 'idle'
+  | 'checking'
+  | 'ready-to-download' // verified but autoUpdate is off; user must click Download
+  | 'downloading'
+  | 'ready'             // downloaded + verified; user clicks Install
+  | 'installing';
 type CheckOutcome =
   | { kind: 'no-update'; message: string }
   | { kind: 'missing-assets'; message: string; release: GithubRelease }
@@ -291,48 +297,31 @@ export function AutoUpdate() {
       addDiagnosticLog({
         level: 'success',
         category: 'UPDATE',
-        message: `Update v${artifact.version} verified — starting download`,
+        message: `Update v${artifact.version} verified — ${updateInfo.autoUpdate ? 'auto-downloading' : 'waiting for user to click Download'}`,
       });
 
-      // 4. Auto-download. In the production Electron build this is
-      //    electron-updater doing the actual file transfer + signature
-      //    verification; here in the demo we simulate progress.
+      // Update store state so the UI reflects the verified version.
       setUpdateInfo({
         latestVersion: artifact.version,
         updateAvailable: true,
         lastChecked: new Date(),
         releaseNotes: artifact.notes || 'See GitHub for release notes.',
       });
-      setPhase('downloading');
-      setUpdateInfo({ isDownloading: true, downloadProgress: 0 });
 
-      await new Promise<void>((resolve) => {
-        let pct = 0;
-        const tick = () => {
-          pct = Math.min(pct + 8 + Math.random() * 12, 100);
-          setUpdateInfo({ downloadProgress: pct });
-          if (pct >= 100) {
-            resolve();
-          } else {
-            setTimeout(tick, 200);
-          }
-        };
-        setTimeout(tick, 200);
-      });
-
-      setUpdateInfo({ isDownloading: false, downloadProgress: 100 });
-      setPhase('ready');
-      addDiagnosticLog({
-        level: 'success',
-        category: 'UPDATE',
-        message: `Update v${artifact.version} downloaded and verified — ready to install`,
-      });
+      // If auto-update is enabled, download immediately. Otherwise
+      // park at 'ready-to-download' so the user sees a Download button
+      // and stays in control.
+      if (updateInfo.autoUpdate) {
+        await runDownload(artifact);
+      } else {
+        setPhase('ready-to-download');
+      }
 
       // 5. Notify via system tray (Electron-only; no-op in web demo).
       try {
         await window.callerflash?.notify?.show?.(
-          'Update ready to install',
-          `v${artifact.version} is downloaded. Click "Restart to Install" to apply.`
+          `v${artifact.version} available`,
+          'Click the Updates tab to download and install.'
         );
       } catch {
         // Ignore — web demo has no notification backend.
@@ -342,6 +331,42 @@ export function AutoUpdate() {
       addDiagnosticLog({ level: 'error', category: 'UPDATE', message: `Update check failed: ${message}` });
       setPhase('idle');
     }
+  };
+
+  /**
+   * Perform the simulated download. In production this is
+   * electron-updater downloading the binary + re-verifying the
+   * signature after transfer; here we animate the progress bar.
+   */
+  const runDownload = async (artifact: { version: string }) => {
+    setPhase('downloading');
+    setUpdateInfo({ isDownloading: true, downloadProgress: 0 });
+
+    await new Promise<void>((resolve) => {
+      let pct = 0;
+      const tick = () => {
+        pct = Math.min(pct + 8 + Math.random() * 12, 100);
+        setUpdateInfo({ downloadProgress: pct });
+        if (pct >= 100) resolve();
+        else setTimeout(tick, 200);
+      };
+      setTimeout(tick, 200);
+    });
+
+    setUpdateInfo({ isDownloading: false, downloadProgress: 100 });
+    setPhase('ready');
+    addDiagnosticLog({
+      level: 'success',
+      category: 'UPDATE',
+      message: `Update v${artifact.version} downloaded and verified — ready to install`,
+    });
+  };
+
+  /** Manual download (when autoUpdate is off and user clicks Download). */
+  const handleDownload = async () => {
+    if (phase !== 'ready-to-download') return;
+    const latest = updateInfo.latestVersion;
+    await runDownload({ version: latest });
   };
 
   /**
@@ -399,11 +424,14 @@ export function AutoUpdate() {
           <h2 className="text-xl font-bold text-win-text">Updates</h2>
           <p className="text-xs text-win-text-secondary mt-0.5">
             v{updateInfo.currentVersion} · <span className="capitalize">{updateInfo.updateChannel}</span> channel
-            {updateInfo.updateAvailable && phase !== 'ready' && (
+            {updateInfo.updateAvailable && phase !== 'ready' && phase !== 'installing' && (
               <> · v{updateInfo.latestVersion} available</>
             )}
             {phase === 'ready' && (
-              <> · v{updateInfo.latestVersion} ready</>
+              <> · v{updateInfo.latestVersion} ready to install</>
+            )}
+            {phase === 'installing' && (
+              <> · installing…</>
             )}
           </p>
         </div>
@@ -425,6 +453,15 @@ export function AutoUpdate() {
             >
               <Download className="w-4 h-4" />
               Restart to Install
+            </button>
+          ) : phase === 'ready-to-download' ? (
+            <button
+              onClick={handleDownload}
+              disabled={isBusy}
+              className="flex items-center gap-2 px-3.5 py-1.5 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors border border-win-accent/30 disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" />
+              Download Update
             </button>
           ) : (
             <button
@@ -562,7 +599,11 @@ export function AutoUpdate() {
           >
             <div className="min-w-0 pr-2">
               <p className="text-sm font-medium text-win-text">Notify on update available</p>
-              <p className="text-[11px] text-win-text-tertiary">Tray notification + in-app banner. Never installs silently.</p>
+              <p className="text-[11px] text-win-text-tertiary">
+                {updateInfo.autoUpdate
+                  ? 'Auto-downloads verified updates in the background.'
+                  : 'Notify when an update is available. Download manually below.'}
+              </p>
             </div>
             <div className={`w-9 h-[20px] rounded-full transition-colors relative flex-shrink-0 ${
               updateInfo.autoUpdate ? 'bg-win-accent' : 'bg-win-border'
@@ -572,6 +613,17 @@ export function AutoUpdate() {
               }`} />
             </div>
           </div>
+
+          {phase === 'ready-to-download' && (
+            <button
+              onClick={handleDownload}
+              disabled={isBusy}
+              className="w-full flex items-center justify-center gap-2 px-3 py-1.5 mb-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download v{updateInfo.latestVersion} now
+            </button>
+          )}
 
           <div className="p-2.5 rounded-lg bg-win-card border border-win-border/50">
             <p className="text-[11px] font-medium text-win-text-secondary mb-1.5">Update Channel</p>

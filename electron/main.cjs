@@ -212,6 +212,13 @@ ipcMain.on('window:show', () => showWindow());
 // window so toasts still appear when the main app is hidden to the
 // tray.
 let toastWindow = null;
+// Buffered toast events. The toast window's renderer needs to load
+// before it can receive IPC events; if the renderer is still loading
+// when toast:show arrives, the event is buffered here and flushed
+// once `did-finish-load` fires. Without this, the very first toast
+// after app launch is silently dropped.
+let pendingToasts = [];
+let toastRendererReady = false;
 
 const TOAST_DEFAULT = { x: null, y: null, width: 380, height: 150 };
 
@@ -288,6 +295,18 @@ function createToastWindow() {
   toastWindow.setMenuBarVisibility(false);
   toastWindow.setAlwaysOnTop(true, 'screen-saver');
 
+  // Reset the ready flag on (re)load so events that arrive between
+  // a reload and the new renderer's mount get buffered, not dropped.
+  toastRendererReady = false;
+  toastWindow.webContents.on('did-finish-load', () => {
+    toastRendererReady = true;
+    // Flush anything that arrived while the renderer was loading.
+    for (const data of pendingToasts) {
+      toastWindow.webContents.send('toast:show:event', data);
+    }
+    pendingToasts = [];
+  });
+
   // Persist position + size on every move / resize so closing & reopening
   // the app restores the toast window exactly where the user left it.
   toastWindow.on('resize', saveToastState);
@@ -298,9 +317,16 @@ function createToastWindow() {
 
 ipcMain.on('toast:show', (_event, data) => {
   const win = createToastWindow();
-  // Make sure the window is shown even if it was previously hidden.
+  // Always re-show — even if previously hidden, the toast window
+  // must come back every time a new call comes in.
   if (!win.isVisible()) win.show();
-  win.webContents.send('toast:show:event', data);
+  if (toastRendererReady) {
+    win.webContents.send('toast:show:event', data);
+  } else {
+    // Renderer still loading (first toast after app launch is the
+    // typical case) — buffer until `did-finish-load` fires.
+    pendingToasts.push(data);
+  }
 });
 
 ipcMain.on('toast:hide', () => {
