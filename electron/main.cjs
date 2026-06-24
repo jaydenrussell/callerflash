@@ -503,11 +503,12 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
     });
     child.unref();
 
-    // Give the installer a moment to start, then quit.
+    // Give the app time to flush state and fully exit before the
+    // installer starts replacing files. 2s is generous but safe.
     setTimeout(() => {
       isQuitting = true;
       app.quit();
-    }, 500);
+    }, 2000);
   } catch (err) {
     console.error('[updater] Install failed:', err.message);
     if (mainWindow && !mainWindow.isDestroyed()) {

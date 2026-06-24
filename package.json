@@ -67,9 +67,10 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "CallerFlash",
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico"
+      "installerIcon": "build/cflogo.ico",
+      "uninstallerIcon": "build/cflogo.ico",
+      "installerHeaderIcon": "build/cflogo.ico",
+      "runAfterFinish": true
     },
     "publish": null,
     "extraResources": [
