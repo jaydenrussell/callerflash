@@ -161,12 +161,15 @@ export function AutoUpdate() {
   // is the "on first run / schedule" behavior — silent: it doesn't
   // show a spinner, it just updates store state so the user sees
   // "v1.5.0 available" inline if there's a new release.
+  //
+  // Also fires when the user toggles the channel — switching from
+  // stable → beta shouldn't require waiting for the cadence.
   useEffect(() => {
     if (phase !== 'idle') return;
     if (!shouldAutoCheck(updateInfo.lastChecked, updateInfo.updateCheckFrequency)) return;
     handleCheckAndDownload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateInfo.updateCheckFrequency]);
+  }, [updateInfo.updateCheckFrequency, updateInfo.updateChannel]);
 
   /**
    * One-click flow: fetch metadata, run the verification pipeline, and
@@ -229,10 +232,29 @@ export function AutoUpdate() {
 
       const artifact = await parseGithubRelease(candidate);
       if (!artifact) {
-        const msg = `Release ${candidate.tag_name} found, but it's missing the required assets (signed .exe, SHA256SUMS, .sig). Release must be published by the release workflow for in-app updates to work.`;
-        addDiagnosticLog({ level: 'warning', category: 'UPDATE', message: msg });
+        // Release exists on GitHub but doesn't carry the in-app-update
+        // assets (signed .exe, SHA256SUMS, .sig). This is the expected
+        // case for releases uploaded manually — fall back gracefully:
+        // surface the version so the user knows they're behind, and
+        // provide a one-click "Open on GitHub" to download manually.
+        const tagVer = candidate.tag_name.replace(/^v/, '');
+        addDiagnosticLog({
+          level: 'info',
+          category: 'UPDATE',
+          message: `v${tagVer} on ${updateInfo.updateChannel} channel — manual download only (no signed assets in this release)`,
+        });
+        setUpdateInfo({
+          updateAvailable: true,
+          latestVersion: tagVer,
+          lastChecked: new Date(),
+          releasePageUrl: candidate.html_url,
+        });
         setPhase('idle');
-        setOutcome({ kind: 'missing-assets', message: msg, release: candidate });
+        setOutcome({
+          kind: 'missing-assets',
+          message: `v${tagVer} is available on the ${updateInfo.updateChannel} channel. Open it on GitHub to download — this release isn't published by the automated workflow so it doesn't carry signed in-app-update assets.`,
+          release: candidate,
+        });
         return;
       }
 
@@ -420,20 +442,18 @@ export function AutoUpdate() {
         </div>
       </div>
 
-      {/* Visible failure / outcome banner — surfaces what would
-          otherwise be a silent no-op when the release is missing
-          security assets or verification fails. */}
-      {outcome && outcome.kind !== 'no-update' && phase === 'idle' && (
+      {/* Outcome banner — only the serious cases surface here:
+          verification-failed gets a warning. Missing-assets is
+          expected for manual uploads and is shown as a soft info
+          hint inline with the existing Updates header so the user
+          knows there's a newer release + where to get it. */}
+      {outcome?.kind === 'verification-failed' && phase === 'idle' && (
         <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-win-warning/10 border border-win-warning/30">
           <AlertCircle className="w-4 h-4 text-win-warning flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-win-warning">
-              {outcome.kind === 'missing-assets'
-                ? 'Release found, but no signed assets'
-                : 'Update blocked'}
-            </p>
+            <p className="text-sm font-semibold text-win-warning">Update blocked by verification</p>
             <p className="text-xs text-win-text-secondary leading-snug mt-0.5">{outcome.message}</p>
-            {'release' in outcome && outcome.release && (
+            {outcome.release && (
               <button
                 onClick={() => openReleasePage(outcome.release as GithubRelease)}
                 className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-win-accent hover:text-win-accent-hover transition-colors"
