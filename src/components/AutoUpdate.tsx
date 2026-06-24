@@ -3,7 +3,7 @@ import {
   Download, RefreshCw,
   Shield, GitBranch,
   ExternalLink, GitCommit, ChevronDown,
-  Check, X as XIcon, ShieldCheck, FileLock, Key, Bell, AlertCircle
+  Check, X as XIcon, ShieldCheck, FileLock, Key, AlertCircle
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -98,9 +98,7 @@ function matchesChannel(
 type UpdatePhase =
   | 'idle'
   | 'checking'
-  | 'ready-to-download' // verified but autoUpdate is off; user must click Download
   | 'downloading'
-  | 'ready'             // downloaded + verified; user clicks Install
   | 'installing';
 type CheckOutcome =
   | { kind: 'no-update'; message: string }
@@ -367,13 +365,13 @@ export function AutoUpdate() {
         releaseNotes: artifact.notes || 'See GitHub for release notes.',
       });
 
-      // If auto-download is enabled, download immediately. Otherwise
-      // park at 'ready-to-download' so the user sees a Download button
-      // and stays in control.
+      // If auto-download is enabled, download immediately so the
+      // update is ready to install. Either way, the Install button
+      // is always visible in the update banner.
       if (updateInfo.autoDownload) {
         await runDownload({ version: artifact.version, downloadUrl: artifact.downloadUrl });
       } else {
-        setPhase('ready-to-download');
+        setPhase('idle');
       }
 
       // Notify via system tray / OS notification (Electron-only; no-op in web demo).
@@ -436,32 +434,30 @@ export function AutoUpdate() {
       const url = URL.createObjectURL(blob);
       setDownloadedBlobUrl(url);
       setUpdateInfo({ isDownloading: false, downloadProgress: 100 });
-      setPhase('ready');
+      setPhase('idle');
       addDiagnosticLog({
         level: 'success',
         category: 'UPDATE',
         message: `Update v${artifact.version} downloaded (${(received / 1048576).toFixed(1)} MB) — ready to install`,
       });
+      return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Download failed';
       addDiagnosticLog({ level: 'error', category: 'UPDATE', message: msg });
       setUpdateInfo({ isDownloading: false, downloadProgress: 0 });
-      setPhase('ready-to-download');
+      setPhase('idle');
+      return false;
     }
   };
 
-  /** Manual download (when autoDownload is off and user clicks Download). */
-  const handleDownload = async () => {
-    if (phase !== 'ready-to-download' || !artifactUrl) return;
-    await runDownload({ version: updateInfo.latestVersion, downloadUrl: artifactUrl });
-  };
-
   /**
-   * Apply the downloaded update.
-   *   • Electron → IPC to quit and install (electron-updater)
-   *   • Web      → triggers a file save of the downloaded .exe
+   * One-click install: downloads if needed, then runs the installer.
+   *   • Electron → download in renderer, pass URL to main process which
+   *     downloads + spawns the .exe + quits
+   *   • Web      → download in renderer, save .exe via blob anchor
    */
-  const handleInstall = () => {
+  const handleInstall = async () => {
+    if (phase === 'installing' || phase === 'downloading') return;
     setPhase('installing');
     setUpdateInfo({ isInstalling: true });
     addDiagnosticLog({
@@ -470,13 +466,26 @@ export function AutoUpdate() {
       message: `Installing update v${updateInfo.latestVersion}…`,
     });
 
-    // Electron: use the IPC updater bridge to quit and install.
+    // Electron: pass the download URL to main process — it downloads,
+    // saves, spawns the installer, and quits the app.
     if (window.callerflash?.updater?.install) {
-      window.callerflash.updater.install();
+      const url = artifactUrl || `${updateInfo.releasePageUrl}`;
+      window.callerflash.updater.install(url);
       return;
     }
 
-    // Web: trigger a real file download of the .exe.
+    // Web: ensure we have the file downloaded, then save it.
+    if (!downloadedBlobUrl && artifactUrl) {
+      addDiagnosticLog({ level: 'info', category: 'UPDATE', message: 'Downloading before install…' });
+      const ok = await runDownload({ version: updateInfo.latestVersion, downloadUrl: artifactUrl });
+      if (!ok) {
+        setPhase('idle');
+        setUpdateInfo({ isInstalling: false });
+        return;
+      }
+    }
+
+    // Trigger a file save of the downloaded .exe.
     if (downloadedBlobUrl) {
       const a = document.createElement('a');
       a.href = downloadedBlobUrl;
@@ -485,11 +494,9 @@ export function AutoUpdate() {
       a.click();
       document.body.removeChild(a);
     } else if (artifactUrl) {
-      // Fallback: direct link if blob isn't available.
       window.open(artifactUrl, '_blank');
     }
 
-    // Mark as "installed" (in web the user runs the .exe manually).
     setTimeout(() => {
       setUpdateInfo({
         isInstalling: false,
@@ -531,11 +538,8 @@ export function AutoUpdate() {
           <h2 className="text-xl font-bold text-win-text">Updates</h2>
           <p className="text-xs text-win-text-secondary mt-0.5">
             v{updateInfo.currentVersion} · <span className="capitalize">{updateInfo.updateChannel}</span> channel
-            {updateInfo.updateAvailable && phase !== 'ready' && phase !== 'installing' && (
+            {updateInfo.updateAvailable && phase !== 'installing' && (
               <> · v{updateInfo.latestVersion} available</>
-            )}
-            {phase === 'ready' && (
-              <> · v{updateInfo.latestVersion} ready to install</>
             )}
             {phase === 'installing' && (
               <> · installing…</>
@@ -552,23 +556,16 @@ export function AutoUpdate() {
             Releases
             <ExternalLink className="w-3 h-3" />
           </button>
-          {phase === 'ready' ? (
+          {updateInfo.updateAvailable ? (
             <button
               onClick={handleInstall}
               disabled={isBusy}
               className="flex items-center gap-2 px-3.5 py-1.5 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors border border-win-success/30 disabled:opacity-50"
             >
-              <Download className="w-4 h-4" />
-              Restart to Install
-            </button>
-          ) : phase === 'ready-to-download' ? (
-            <button
-              onClick={handleDownload}
-              disabled={isBusy}
-              className="flex items-center gap-2 px-3.5 py-1.5 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors border border-win-accent/30 disabled:opacity-50"
-            >
-              <Download className="w-4 h-4" />
-              Download Update
+              <Download className={`w-4 h-4 ${phase === 'downloading' || phase === 'installing' ? 'animate-spin' : ''}`} />
+              {phase === 'downloading' ? 'Downloading…'
+                : phase === 'installing' ? 'Installing…'
+                : `Install v${updateInfo.latestVersion}`}
             </button>
           ) : (
             <button
@@ -576,11 +573,8 @@ export function AutoUpdate() {
               disabled={isBusy}
               className="flex items-center gap-2 px-3.5 py-1.5 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
             >
-              <RefreshCw className={`w-4 h-4 ${phase === 'checking' || phase === 'downloading' ? 'animate-spin' : ''}`} />
-              {phase === 'checking' ? 'Checking…'
-                : phase === 'downloading' ? 'Downloading…'
-                : phase === 'installing' ? 'Installing…'
-                : 'Check for Updates'}
+              <RefreshCw className={`w-4 h-4 ${phase === 'checking' ? 'animate-spin' : ''}`} />
+              {phase === 'checking' ? 'Checking…' : 'Check for Updates'}
             </button>
           )}
         </div>
@@ -611,7 +605,7 @@ export function AutoUpdate() {
       )}
 
       {/* ── Prominent update-available banner ─────────────────────── */}
-      {updateInfo.updateAvailable && (phase === 'idle' || phase === 'ready-to-download' || phase === 'ready') && (
+      {updateInfo.updateAvailable && phase !== 'checking' && (
         <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500/15 to-yellow-500/10 border border-amber-400/40">
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-400/20 flex items-center justify-center">
             <Download className="w-5 h-5 text-amber-400" />
@@ -621,50 +615,27 @@ export function AutoUpdate() {
               Update available: v{updateInfo.latestVersion}
             </p>
             <p className="text-[11px] text-win-text-secondary mt-0.5">
-              {phase === 'ready'
-                ? 'Downloaded and verified — ready to install.'
-                : phase === 'ready-to-download'
-                ? `Newer than your current v${updateInfo.currentVersion} on the ${updateInfo.updateChannel} channel.`
-                : `A newer version is available on the ${updateInfo.updateChannel} channel.`}
+              {downloadedBlobUrl
+                ? 'Downloaded and verified — click Install to update.'
+                : `Newer than your current v${updateInfo.currentVersion} on the ${updateInfo.updateChannel} channel.`}
             </p>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
-            {phase === 'ready' ? (
-              <button
-                onClick={handleInstall}
-                disabled={isBusy}
-                className="flex items-center gap-2 px-4 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-              >
-                <Download className="w-4 h-4" />
-                Install
-              </button>
-            ) : phase === 'ready-to-download' ? (
-              <button
-                onClick={handleDownload}
-                disabled={isBusy}
-                className="flex items-center gap-2 px-4 py-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-              >
-                <Download className="w-4 h-4" />
-                Download
-              </button>
-            ) : null}
+          <div className="flex-shrink-0">
+            <button
+              onClick={handleInstall}
+              disabled={isBusy}
+              className="flex items-center gap-2 px-4 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              <Download className={`w-4 h-4 ${phase === 'downloading' || phase === 'installing' ? 'animate-spin' : ''}`} />
+              {phase === 'downloading' ? 'Downloading…'
+                : phase === 'installing' ? 'Installing…'
+                : 'Install Update'}
+            </button>
           </div>
         </div>
       )}
 
-      {/* Ready-to-install banner — shown during download/install phases */}
-      {phase === 'ready' && (
-        <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-win-success/10 border border-win-success/20">
-          <Bell className="w-4 h-4 text-win-success flex-shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-win-success">Update ready</p>
-            <p className="text-xs text-win-text-secondary leading-snug mt-0.5">
-              v{updateInfo.latestVersion} downloaded + verified. Tray notification fired.
-              Click <span className="font-semibold">Restart to Install</span> when you're ready — never installs silently.
-            </p>
-          </div>
-        </div>
-      )}
+
 
       {/* Verification Audit Panel */}
       {verification && (
@@ -698,11 +669,11 @@ export function AutoUpdate() {
       )}
 
       {/* Download Progress */}
-      {(phase === 'downloading' || phase === 'installing') && (
+      {phase === 'downloading' && (
         <div className="bg-win-surface rounded-xl border border-win-border p-3 flex-shrink-0">
           <div className="flex items-center justify-between mb-1.5">
             <p className="text-xs font-medium text-win-text">
-              {phase === 'installing' ? 'Installing update…' : 'Downloading update…'}
+              {phase === 'downloading' ? 'Downloading update…' : 'Preparing…'}
             </p>
             <span className="text-xs font-bold text-win-accent">
               {Math.round(updateInfo.downloadProgress)}%
@@ -818,43 +789,7 @@ export function AutoUpdate() {
             </div>
           </div>
 
-          {/* Manual download / install — always visible when relevant */}
-          {updateInfo.updateAvailable && (phase === 'ready-to-download' || phase === 'ready') && (
-            <div className="p-2.5 rounded-lg bg-win-card border border-win-accent/30 mb-2">
-              <p className="text-[11px] font-medium text-win-accent mb-2">
-                Update v{updateInfo.latestVersion} available
-              </p>
-              <div className="flex gap-2">
-                {phase === 'ready-to-download' && (
-                  <button
-                    onClick={handleDownload}
-                    disabled={isBusy}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Download
-                  </button>
-                )}
-                {phase === 'ready' && (
-                  <button
-                    onClick={handleInstall}
-                    disabled={isBusy}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Install & Restart
-                  </button>
-                )}
-                <button
-                  onClick={() => openReleasePage()}
-                  className="flex items-center justify-center gap-2 px-3 py-2 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm transition-colors border border-win-border"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  GitHub
-                </button>
-              </div>
-            </div>
-          )}
+
         </div>
 
         <div className="bg-win-surface rounded-xl border border-win-border p-3">
