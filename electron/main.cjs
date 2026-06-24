@@ -104,8 +104,10 @@ function loadTrayIcon() {
   // then fall back to the source-tree location (dev mode).
   const resPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
   const candidates = [
-    path.join(resPath, 'tray-icon.ico'),
-    path.join(resPath, 'tray-icon.png'),
+    path.join(resPath, 'cflogo.ico'),
+    path.join(resPath, 'cflogo.png'),
+    path.join(__dirname, '../build/cglogo.ico'),
+    path.join(__dirname, '../build/cflogo.png'),
     path.join(__dirname, '../build/tray-icon.ico'),
     path.join(__dirname, '../build/tray-icon.png'),
     path.join(__dirname, '../build/Untitled.png'),
