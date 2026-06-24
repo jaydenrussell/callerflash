@@ -12,6 +12,8 @@ files:
   - electron/**/*
   - "!node_modules/**/*"
 
+artifactName: "CallerFlash-${version}.${ext}"
+
 win:
   target:
     - target: nsis
