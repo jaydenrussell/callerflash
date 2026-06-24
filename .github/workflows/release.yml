@@ -78,6 +78,26 @@ jobs:
           echo "channel=${CHANNEL}"     >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}"     >> "$GITHUB_OUTPUT"
           echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+
+          # Compute the formatted release name.
+          #   stable:  CallerFlash v1.5.0
+          #   beta:    CallerFlash v1.5.0-28.beta
+          #   nightly: CallerFlash — Nightly 20260624
+          case "$CHANNEL" in
+            nightly)
+              NIGHTLY_DATE="${VERSION#nightly-}"
+              echo "release_name=CallerFlash — Nightly ${NIGHTLY_DATE}" >> "$GITHUB_OUTPUT"
+              ;;
+            beta)
+              BETA_BASE="${VERSION%%-*}"
+              BETA_NUM="${VERSION##*-}"
+              echo "release_name=CallerFlash v${BETA_BASE}-${BETA_NUM}.beta" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "release_name=CallerFlash v${VERSION}" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
           echo "→ Channel: ${CHANNEL}  |  Version: ${VERSION}  |  Pre-release: ${PRERELEASE}"
 
   # ── Secret gate (fail fast) ───────────────────────────────────────
@@ -396,8 +416,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.route.outputs.version }}
-          name: >-
-            ${{ needs.route.outputs.channel == 'nightly' && format('CallerFlash Nightly {0}', needs.route.outputs.version) || needs.route.outputs.channel == 'beta' && format('CallerFlash v{0} beta', needs.route.outputs.version) || format('CallerFlash v{0}', needs.route.outputs.version) }}
+          name: ${{ needs.route.outputs.release_name }}
           body_path: release-notes.md
           prerelease: ${{ needs.route.outputs.prerelease }}
           draft: false
