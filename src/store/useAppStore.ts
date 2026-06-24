@@ -63,6 +63,7 @@ export interface UpdateInfo {
   lastChecked: Date | null;
   autoUpdate: boolean;
   updateChannel: 'stable' | 'beta' | 'nightly';
+  updateCheckFrequency: 'off' | 'daily' | 'weekly' | 'monthly';
   githubRepo: string;
   releaseNotes: string;
   releasePageUrl: string;
@@ -76,6 +77,8 @@ export type TabId = 'dashboard' | 'calls' | 'settings' | 'preferences' | 'toast'
 interface PersistedUiSettings {
   appPreferences?: Partial<AppPreferences>;
   toastDragPosition?: { x: number; y: number } | null;
+  updateCheckFrequency?: 'off' | 'daily' | 'weekly' | 'monthly';
+  lastCheckedAt?: string; // ISO date — Date isn't serializable through JSON
 }
 
 function loadPersistedUiSettings(): PersistedUiSettings {
@@ -185,9 +188,10 @@ const defaultUpdateInfo: UpdateInfo = {
   currentVersion: __APP_VERSION__,
   latestVersion: __APP_VERSION__,
   updateAvailable: false,
-  lastChecked: null,
+  lastChecked: persistedUi.lastCheckedAt ? new Date(persistedUi.lastCheckedAt) : null,
   autoUpdate: true,
   updateChannel: 'stable',
+  updateCheckFrequency: persistedUi.updateCheckFrequency ?? 'daily',
   githubRepo: __APP_REPO__,
   releaseNotes: '',
   releasePageUrl: '',
@@ -252,7 +256,19 @@ export const useAppStore = create<AppState>((set) => ({
   clearDiagnosticLogs: () => set({ diagnosticLogs: [] }),
 
   updateInfo: defaultUpdateInfo,
-  setUpdateInfo: (info) => set((s) => ({ updateInfo: { ...s.updateInfo, ...info } })),
+  setUpdateInfo: (info) => set((s) => {
+    const next = { ...s.updateInfo, ...info };
+    // Persist the fields that drive scheduling across restarts so
+    // the "daily / weekly / monthly" cadence survives an app exit.
+    savePersistedUiSettings({
+      ...loadPersistedUiSettings(),
+      appPreferences: s.appPreferences,
+      toastDragPosition: s.toastDragPosition,
+      updateCheckFrequency: next.updateCheckFrequency,
+      lastCheckedAt: next.lastChecked ? next.lastChecked.toISOString() : undefined,
+    });
+    return { updateInfo: next };
+  }),
 
   toastDragPosition: persistedUi.toastDragPosition ?? null,
   setToastDragPosition: (pos) => set((s) => {

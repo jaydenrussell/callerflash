@@ -84,6 +84,39 @@ type CheckOutcome =
   | { kind: 'verification-failed'; message: string; release: GithubRelease }
   | null;
 
+type UpdateFrequency = 'off' | 'daily' | 'weekly' | 'monthly';
+
+const FREQUENCY_INTERVAL_DAYS: Record<UpdateFrequency, number | null> = {
+  off: null,
+  daily: 1,
+  weekly: 7,
+  monthly: 30,
+};
+
+function shouldAutoCheck(
+  lastChecked: Date | null,
+  frequency: UpdateFrequency
+): boolean {
+  const interval = FREQUENCY_INTERVAL_DAYS[frequency];
+  if (interval === null) return false; // off
+  if (!lastChecked) return true;       // first run
+  const ageDays = (Date.now() - lastChecked.getTime()) / 86_400_000;
+  return ageDays >= interval;
+}
+
+function formatRelativeLastCheck(lastChecked: Date | null): string {
+  if (!lastChecked) return 'Never';
+  const diffMs = Date.now() - lastChecked.getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return lastChecked.toLocaleDateString();
+}
+
 export function AutoUpdate() {
   const { updateInfo, setUpdateInfo, addDiagnosticLog } = useAppStore();
   const [verification, setVerification] = useState<VerificationResult | null>(null);
@@ -123,6 +156,17 @@ export function AutoUpdate() {
       cancelled = true;
     };
   }, [updateInfo.githubRepo, updateInfo.updateChannel]);
+
+  // Auto-check on tab mount (or when the cadence becomes due). This
+  // is the "on first run / schedule" behavior — silent: it doesn't
+  // show a spinner, it just updates store state so the user sees
+  // "v1.5.0 available" inline if there's a new release.
+  useEffect(() => {
+    if (phase !== 'idle') return;
+    if (!shouldAutoCheck(updateInfo.lastChecked, updateInfo.updateCheckFrequency)) return;
+    handleCheckAndDownload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updateInfo.updateCheckFrequency]);
 
   /**
    * One-click flow: fetch metadata, run the verification pipeline, and
@@ -527,6 +571,35 @@ export function AutoUpdate() {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="p-2.5 rounded-lg bg-win-card border border-win-border/50">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[11px] font-medium text-win-text-secondary">Auto-check frequency</p>
+              <p className="text-[10px] text-win-text-tertiary">
+                Last: {formatRelativeLastCheck(updateInfo.lastChecked)}
+              </p>
+            </div>
+            <div className="flex gap-1.5">
+              {(['off', 'daily', 'weekly', 'monthly'] as const).map((freq) => (
+                <button
+                  key={freq}
+                  onClick={() => setUpdateInfo({ updateCheckFrequency: freq })}
+                  className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    updateInfo.updateCheckFrequency === freq
+                      ? 'bg-win-accent/20 text-win-accent border border-win-accent/30'
+                      : 'bg-win-surface text-win-text-secondary hover:bg-win-surface-hover border border-win-border'
+                  }`}
+                >
+                  {freq === 'off' ? 'Off' : freq.charAt(0).toUpperCase() + freq.slice(1)}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-win-text-tertiary mt-1.5 leading-snug">
+              {updateInfo.updateCheckFrequency === 'off'
+                ? 'Auto-check disabled. Use the Check button to look manually.'
+                : `Auto-checks on tab open if the last check is older than ${FREQUENCY_INTERVAL_DAYS[updateInfo.updateCheckFrequency]} day${FREQUENCY_INTERVAL_DAYS[updateInfo.updateCheckFrequency] === 1 ? '' : 's'}.`}
+            </p>
           </div>
         </div>
 
