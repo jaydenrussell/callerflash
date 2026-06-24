@@ -26,13 +26,9 @@ on:
   workflow_call:
     inputs:
       channel:
-        description: 'Release channel'
+        description: 'Release channel: "stable" | "beta" | "nightly"'
         required: true
-        type: choice
-        options:
-          - stable
-          - beta
-          - nightly
+        type: string
       version_override:
         description: 'Optional explicit version (e.g. "1.5.0" or "1.5.0-beta.3"). Skips auto-increment.'
         required: false
