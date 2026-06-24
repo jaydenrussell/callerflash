@@ -55,20 +55,29 @@ function parseChangelog(body: string, max = 6): string[] {
 
 /**
  * Compare two semver strings. Returns 1 if a > b, -1 if a < b, 0 if equal.
- * Handles prerelease suffixes like "1.5.0-beta.3" or "1.4.2-nightly.abc1234"
- * by comparing the base version (X.Y.Z) numerically, then falling back to
- * string comparison for the prerelease part.
+ * Handles prerelease suffixes like "1.5.0-beta.3" or "1.4.2-nightly.abc1234".
+ * A version with a prerelease suffix is considered HIGHER than the same base
+ * version without one (e.g. 1.5.0-nightly.xxx > 1.5.0).
  */
 function compareVersions(a: string, b: string): number {
-  const pa = a.replace(/^v/, '').split(/[-+]/)[0].split('.').map(Number);
-  const pb = b.replace(/^v/, '').split(/[-+]/)[0].split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const na = pa[i] ?? 0;
-    const nb = pb[i] ?? 0;
+  const parseA = a.replace(/^v/, '').split(/-(.+)/);
+  const parseB = b.replace(/^v/, '').split(/-(.+)/);
+  const baseA = parseA[0].split('.').map(Number);
+  const baseB = parseB[0].split('.').map(Number);
+  // Compare base versions first (X.Y.Z).
+  for (let i = 0; i < Math.max(baseA.length, baseB.length); i++) {
+    const na = baseA[i] ?? 0;
+    const nb = baseB[i] ?? 0;
     if (na > nb) return 1;
     if (na < nb) return -1;
   }
-  return 0;
+  // Same base — a prerelease suffix makes it higher (1.5.0-beta > 1.5.0).
+  const preA = parseA[1] || '';
+  const preB = parseB[1] || '';
+  if (preA && !preB) return 1;  // a has prerelease, b doesn't → a is newer
+  if (!preA && preB) return -1; // b has prerelease, a doesn't → b is newer
+  if (preA === preB) return 0;
+  return preA > preB ? 1 : -1; // lexicographic comparison of prerelease
 }
 
 function formatReleaseDate(iso: string): string {
