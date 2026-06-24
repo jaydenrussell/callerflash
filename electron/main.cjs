@@ -198,6 +198,7 @@ function createTray() {
   const baseBuf = trayIconDefault.resize({ width: size, height: size }).toBitmap();
 
   function makeStatusIcon(cr, cg, cb) {
+    // nativeImage.createFromBuffer expects BGRA pixel format.
     const buf = Buffer.alloc(size * size * 4, 0);
     const cx = size / 2;
     const cy = size / 2;
@@ -209,24 +210,23 @@ function createTray() {
         const dist = Math.sqrt(dx * dx + dy * dy);
         const i = (y * size + x) * 4;
         if (dist <= radius) {
-          // Inside circle: blend the icon pixels with the status color.
           const bi = i;
-          const srcR = baseBuf[bi] || 0;
+          const srcB = baseBuf[bi] || 0;     // BGRA: B first
           const srcG = baseBuf[bi + 1] || 0;
-          const srcB = baseBuf[bi + 2] || 0;
+          const srcR = baseBuf[bi + 2] || 0;
           const srcA = baseBuf[bi + 3] || 0;
           if (srcA > 128) {
-            // Icon pixel: keep the icon but slightly tint it.
-            buf[i]     = Math.min(255, (srcR * 0.7 + cr * 0.3) | 0);
-            buf[i + 1] = Math.min(255, (srcG * 0.7 + cg * 0.3) | 0);
-            buf[i + 2] = Math.min(255, (srcB * 0.7 + cb * 0.3) | 0);
-            buf[i + 3] = 255;
+            // Icon pixel: keep the icon with minimal tinting.
+            buf[i]     = Math.min(255, (srcB * 0.85 + cb * 0.15) | 0); // B
+            buf[i + 1] = Math.min(255, (srcG * 0.85 + cg * 0.15) | 0); // G
+            buf[i + 2] = Math.min(255, (srcR * 0.85 + cr * 0.15) | 0); // R
+            buf[i + 3] = 255; // A
           } else {
-            // Transparent pixel: fill with status color.
-            buf[i]     = cr;
-            buf[i + 1] = cg;
-            buf[i + 2] = cb;
-            buf[i + 3] = 220;
+            // Transparent pixel: fill with status color at 20% opacity.
+            buf[i]     = cb; // B
+            buf[i + 1] = cg; // G
+            buf[i + 2] = cr; // R
+            buf[i + 3] = 51; // A (20% of 255 ≈ 51)
           }
         }
       }
@@ -517,8 +517,13 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
   }
 
   let fileName;
-  try { fileName = decodeURIComponent(parsed.pathname.split('/').pop()); } catch { fileName = null; }
-  if (!fileName || !fileName.includes('.')) fileName = 'CallerFlash-Update.exe';
+  try {
+    const segs = parsed.pathname.split('/');
+    fileName = decodeURIComponent(segs[segs.length - 1] || '');
+  } catch { fileName = ''; }
+  if (!/\.(exe|msi|deb|AppImage|dmg|zip)$/i.test(fileName)) {
+    fileName = (fileName || 'CallerFlash-Update').replace(/[^a-zA-Z0-9._-]/g, '') + '.exe';
+  }
   const tmpDir = app.getPath('temp');
   const filePath = path.join(tmpDir, `callerflash-update-${Date.now()}-${fileName}`);
 
