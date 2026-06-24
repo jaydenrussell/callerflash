@@ -106,7 +106,7 @@ function loadTrayIcon() {
   const candidates = [
     path.join(resPath, 'cflogo.ico'),
     path.join(resPath, 'cflogo.png'),
-    path.join(__dirname, '../build/cglogo.ico'),
+    path.join(__dirname, '../build/cflogo.ico'),
     path.join(__dirname, '../build/cflogo.png'),
     path.join(__dirname, '../build/tray-icon.ico'),
     path.join(__dirname, '../build/tray-icon.png'),
