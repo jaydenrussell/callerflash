@@ -1,17 +1,17 @@
 name: Release — Nightly
 
 # Triggered by:
-#   • push to the `main` branch (builds nightly from main directly)
+#   • push to the `nightly` branch (auto-synced from main via PAT)
 #   • daily schedule (03:00 UTC)
 #   • manual dispatch
 #
-# Build context: the `main` branch HEAD.
+# Build context: the `nightly` branch HEAD (mirrors main).
 # Promote to beta by manually dispatching the beta workflow.
 
 on:
   push:
     branches:
-      - main
+      - nightly
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:

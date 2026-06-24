@@ -1,0 +1,31 @@
+name: Sync main → nightly
+
+# Automatically pushes the latest main to the nightly branch on every
+# commit. Uses a PAT (not GITHUB_TOKEN) so the push triggers the
+# nightly release workflow.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Push main → nightly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          # PAT is required — GITHUB_TOKEN pushes don't trigger workflows.
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Push to nightly
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git push origin main:nightly --force
