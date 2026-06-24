@@ -27,5 +27,12 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: CallerFlash
 
-# Publish is handled by gh CLI in the workflow — not by electron-builder
-publish: null
+# Publish config — required for electron-builder to generate the
+# `latest.yml` / `beta.yml` / `nightly.yml` update manifests consumed
+# by electron-updater at install time. Actual publishing is performed
+# by the workflow via softprops/action-gh-release, NOT by electron-builder
+# itself (the workflow runs electron-builder with --publish never).
+publish:
+  provider: github
+  owner: jaydenrussell
+  repo: callerflash
