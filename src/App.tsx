@@ -273,7 +273,7 @@ function MiniStat({
 }
 
 export default function App() {
-  const { isMinimized, setIsMinimized, addDiagnosticLog, appPreferences, sipConnected, sipRegistered } = useAppStore();
+  const { isMinimized, setIsMinimized, addDiagnosticLog, appPreferences, sipConnected, sipRegistered, setActiveTab } = useAppStore();
   const width = useWindowWidth();
   const sidebarCollapsed = width < SIDEBAR_COLLAPSE_BREAKPOINT;
   const titleCompact = width < 520;
@@ -320,6 +320,15 @@ export default function App() {
       offHidden?.();
     };
   }, [setIsMinimized]);
+
+  // Listen for tray menu "navigate to updates" click.
+  useEffect(() => {
+    if (!window.callerflash?.window?.onNavigateToUpdate) return;
+    const off = window.callerflash.window.onNavigateToUpdate(() => {
+      setActiveTab('update');
+    });
+    return () => off?.();
+  }, [setActiveTab]);
 
   // Push the current SIP status to main so the tray tooltip + "SIP: …"
   // menu item stay current. Cheap — just a string IPC send.

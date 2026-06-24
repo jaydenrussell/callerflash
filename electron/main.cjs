@@ -40,6 +40,14 @@ let tray = null;
 // `tray:set-sip-status` IPC so the tray tooltip + menu label stay current.
 let lastSipStatus = 'Offline';
 
+// Pre-generated colored tray icons for each SIP state.
+// Created at startup from the main cflogo icon with a colored overlay.
+let trayIconDefault = null;
+let trayIconGreen = null;
+let trayIconYellow = null;
+let trayIconRed = null;
+let updateAvailableVersion = null;
+
 // Set to true ONLY when the user explicitly chose Quit from the tray menu.
 // Prevents the window `close` interceptor from trapping a real shutdown.
 let isQuitting = false;
@@ -131,7 +139,7 @@ function loadTrayIcon() {
 
 function refreshTrayMenu() {
   if (!tray) return;
-  const menu = Menu.buildFromTemplate([
+  const items = [
     {
       label: 'Show CallerFlash',
       click: () => showWindow(),
@@ -145,21 +153,91 @@ function refreshTrayMenu() {
       label: `SIP: ${lastSipStatus}`,
       enabled: false, // Status indicator only — not interactive
     },
-    { type: 'separator' },
-    {
-      label: 'Quit CallerFlash',
+  ];
+
+  if (updateAvailableVersion) {
+    items.push({ type: 'separator' });
+    items.push({
+      label: `⬆ Update available: v${updateAvailableVersion}`,
       click: () => {
-        isQuitting = true;
-        app.quit();
+        showWindow();
+        // Tell the renderer to navigate to the Updates tab.
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('navigate-to-update');
+        }
       },
+    });
+  }
+
+  items.push({ type: 'separator' });
+  items.push({
+    label: 'Quit CallerFlash',
+    click: () => {
+      isQuitting = true;
+      app.quit();
     },
-  ]);
+  });
+
+  const menu = Menu.buildFromTemplate(items);
   tray.setContextMenu(menu);
-  tray.setToolTip(`CallerFlash — SIP ${lastSipStatus}`);
+  const tip = updateAvailableVersion
+    ? `CallerFlash — SIP ${lastSipStatus} · Update v${updateAvailableVersion} available`
+    : `CallerFlash — SIP ${lastSipStatus}`;
+  tray.setToolTip(tip);
 }
 
 function createTray() {
-  tray = new Tray(loadTrayIcon());
+  trayIconDefault = loadTrayIcon();
+  tray = new Tray(trayIconDefault);
+
+  // Pre-generate colored icon variants for SIP status.
+  // Each variant takes the base cflogo icon and blends it onto a
+  // colored background circle, so the whole tray icon reflects the
+  // current SIP state at a glance.
+  const size = 32;
+  const baseBuf = trayIconDefault.resize({ width: size, height: size }).toBitmap();
+
+  function makeStatusIcon(cr, cg, cb) {
+    const buf = Buffer.alloc(size * size * 4, 0);
+    const cx = size / 2;
+    const cy = size / 2;
+    const radius = size / 2 - 1;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = x - cx;
+        const dy = y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const i = (y * size + x) * 4;
+        if (dist <= radius) {
+          // Inside circle: blend the icon pixels with the status color.
+          const bi = i;
+          const srcR = baseBuf[bi] || 0;
+          const srcG = baseBuf[bi + 1] || 0;
+          const srcB = baseBuf[bi + 2] || 0;
+          const srcA = baseBuf[bi + 3] || 0;
+          if (srcA > 128) {
+            // Icon pixel: keep the icon but slightly tint it.
+            buf[i]     = Math.min(255, (srcR * 0.7 + cr * 0.3) | 0);
+            buf[i + 1] = Math.min(255, (srcG * 0.7 + cg * 0.3) | 0);
+            buf[i + 2] = Math.min(255, (srcB * 0.7 + cb * 0.3) | 0);
+            buf[i + 3] = 255;
+          } else {
+            // Transparent pixel: fill with status color.
+            buf[i]     = cr;
+            buf[i + 1] = cg;
+            buf[i + 2] = cb;
+            buf[i + 3] = 220;
+          }
+        }
+      }
+    }
+    return nativeImage.createFromBuffer(buf, { width: size, height: size });
+  }
+
+  // Green = registered, Yellow = connecting, Red = offline
+  trayIconGreen  = makeStatusIcon(0x6c, 0xcb, 0x5f); // #6ccb5f
+  trayIconYellow = makeStatusIcon(0xfc, 0xb8, 0x27); // #fcb827
+  trayIconRed    = makeStatusIcon(0xff, 0x6b, 0x6b); // #ff6b6b
 
   // Windows convention: single left-click toggles window visibility.
   // Double-click is also accepted as a convenience for users who expect it.
@@ -526,7 +604,20 @@ ipcMain.on('tray:set-sip-status', (_event, status) => {
   if (typeof status === 'string' && status.length > 0 && status.length < 64) {
     lastSipStatus = status;
     refreshTrayMenu();
+    // Swap tray icon color to reflect SIP state.
+    if (tray && !tray.isDestroyed()) {
+      const icon = status === 'Registered' ? trayIconGreen
+        : status === 'Connecting' ? trayIconYellow
+        : trayIconRed;
+      if (icon && !icon.isEmpty()) tray.setImage(icon);
+    }
   }
+});
+
+// Renderer pushes update availability so the tray can show it.
+ipcMain.on('tray:set-update-available', (_event, version) => {
+  updateAvailableVersion = (typeof version === 'string' && version.length > 0) ? version : null;
+  refreshTrayMenu();
 });
 
 // ── Second-instance handler ────────────────────────────────────────────
