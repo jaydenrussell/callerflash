@@ -53,6 +53,10 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: CallerFlash
+  installerIcon: build/cflogo.ico
+  uninstallerIcon: build/cflogo.ico
+  installerHeaderIcon: build/cflogo.ico
+  runAfterFinish: true
 
 # Publish config — required for electron-builder to generate the
 # `latest.yml` / `beta.yml` / `nightly.yml` update manifests consumed
