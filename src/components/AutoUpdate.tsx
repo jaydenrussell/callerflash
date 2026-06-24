@@ -297,7 +297,7 @@ export function AutoUpdate() {
       addDiagnosticLog({
         level: 'success',
         category: 'UPDATE',
-        message: `Update v${artifact.version} verified — ${updateInfo.autoUpdate ? 'auto-downloading' : 'waiting for user to click Download'}`,
+        message: `Update v${artifact.version} verified — ${updateInfo.autoDownload ? 'auto-downloading' : 'waiting for user to click Download'}`,
       });
 
       // Update store state so the UI reflects the verified version.
@@ -308,16 +308,16 @@ export function AutoUpdate() {
         releaseNotes: artifact.notes || 'See GitHub for release notes.',
       });
 
-      // If auto-update is enabled, download immediately. Otherwise
+      // If auto-download is enabled, download immediately. Otherwise
       // park at 'ready-to-download' so the user sees a Download button
       // and stays in control.
-      if (updateInfo.autoUpdate) {
+      if (updateInfo.autoDownload) {
         await runDownload(artifact);
       } else {
         setPhase('ready-to-download');
       }
 
-      // 5. Notify via system tray (Electron-only; no-op in web demo).
+      // Notify via system tray / OS notification (Electron-only; no-op in web demo).
       try {
         await window.callerflash?.notify?.show?.(
           `v${artifact.version} available`,
@@ -595,39 +595,9 @@ export function AutoUpdate() {
             <Shield className="w-4 h-4 text-win-accent" />
             Settings
           </h3>
-          <div
-            className="flex items-center justify-between p-2.5 rounded-lg bg-win-card border border-win-border/50 hover:border-win-border cursor-pointer transition-colors mb-2"
-            onClick={() => setUpdateInfo({ autoUpdate: !updateInfo.autoUpdate })}
-          >
-            <div className="min-w-0 pr-2">
-              <p className="text-sm font-medium text-win-text">Notify on update available</p>
-              <p className="text-[11px] text-win-text-tertiary">
-                {updateInfo.autoUpdate
-                  ? 'Auto-downloads verified updates in the background.'
-                  : 'Notify when an update is available. Download manually below.'}
-              </p>
-            </div>
-            <div className={`w-9 h-[20px] rounded-full transition-colors relative flex-shrink-0 ${
-              updateInfo.autoUpdate ? 'bg-win-accent' : 'bg-win-border'
-            }`}>
-              <div className={`absolute top-[2px] w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                updateInfo.autoUpdate ? 'translate-x-[19px]' : 'translate-x-[2px]'
-              }`} />
-            </div>
-          </div>
 
-          {phase === 'ready-to-download' && (
-            <button
-              onClick={handleDownload}
-              disabled={isBusy}
-              className="w-full flex items-center justify-center gap-2 px-3 py-1.5 mb-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Download v{updateInfo.latestVersion} now
-            </button>
-          )}
-
-          <div className="p-2.5 rounded-lg bg-win-card border border-win-border/50">
+          {/* Update Channel */}
+          <div className="p-2.5 rounded-lg bg-win-card border border-win-border/50 mb-2">
             <p className="text-[11px] font-medium text-win-text-secondary mb-1.5">Update Channel</p>
             <div className="flex gap-1.5">
               {(['stable', 'beta', 'nightly'] as const).map((channelOpt) => (
@@ -647,7 +617,8 @@ export function AutoUpdate() {
             </div>
           </div>
 
-          <div className="p-2.5 rounded-lg bg-win-card border border-win-border/50">
+          {/* Auto-check frequency */}
+          <div className="p-2.5 rounded-lg bg-win-card border border-win-border/50 mb-2">
             <div className="flex items-center justify-between mb-1.5">
               <p className="text-[11px] font-medium text-win-text-secondary">Auto-check frequency</p>
               <p className="text-[10px] text-win-text-tertiary">
@@ -675,6 +646,66 @@ export function AutoUpdate() {
                 : `Auto-checks on tab open if the last check is older than ${FREQUENCY_INTERVAL_DAYS[updateInfo.updateCheckFrequency]} day${FREQUENCY_INTERVAL_DAYS[updateInfo.updateCheckFrequency] === 1 ? '' : 's'}.`}
             </p>
           </div>
+
+          {/* Auto-download toggle */}
+          <div
+            className="flex items-center justify-between p-2.5 rounded-lg bg-win-card border border-win-border/50 hover:border-win-border cursor-pointer transition-colors mb-2"
+            onClick={() => setUpdateInfo({ autoDownload: !updateInfo.autoDownload })}
+          >
+            <div className="min-w-0 pr-2">
+              <p className="text-sm font-medium text-win-text">Auto-download updates</p>
+              <p className="text-[11px] text-win-text-tertiary">
+                {updateInfo.autoDownload
+                  ? `Verified ${updateInfo.updateChannel} updates download in the background. You'll be prompted to install.`
+                  : 'Updates are shown but not downloaded. Click Download to get them manually.'}
+              </p>
+            </div>
+            <div className={`w-9 h-[20px] rounded-full transition-colors relative flex-shrink-0 ${
+              updateInfo.autoDownload ? 'bg-win-accent' : 'bg-win-border'
+            }`}>
+              <div className={`absolute top-[2px] w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                updateInfo.autoDownload ? 'translate-x-[19px]' : 'translate-x-[2px]'
+              }`} />
+            </div>
+          </div>
+
+          {/* Manual download / install — always visible when relevant */}
+          {updateInfo.updateAvailable && (phase === 'ready-to-download' || phase === 'ready') && (
+            <div className="p-2.5 rounded-lg bg-win-card border border-win-accent/30 mb-2">
+              <p className="text-[11px] font-medium text-win-accent mb-2">
+                Update v{updateInfo.latestVersion} available
+              </p>
+              <div className="flex gap-2">
+                {phase === 'ready-to-download' && (
+                  <button
+                    onClick={handleDownload}
+                    disabled={isBusy}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download
+                  </button>
+                )}
+                {phase === 'ready' && (
+                  <button
+                    onClick={handleInstall}
+                    disabled={isBusy}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Install & Restart
+                  </button>
+                )}
+                <button
+                  onClick={() => openReleasePage()}
+                  className="flex items-center justify-center gap-2 px-3 py-2 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm transition-colors border border-win-border"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  GitHub
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="bg-win-surface rounded-xl border border-win-border p-3">

@@ -35,12 +35,13 @@ export function simulateIncomingCall(source: 'dashboard' | 'toast-settings' | 'b
 
   addCallRecord(record);
 
-  // Two render paths:
-  //   • Electron (window.callerflash.toast exists): fire to the OS-level
-  //     toast window only — no in-app duplicate. The toast window is
-  //     visible even when the main app is hidden to the tray.
-  //   • Web demo: render in-app via the existing ToastContainer.
+  // Always add to the in-app store so ToastContainer can render the
+  // toast in the main window. In Electron, also fire the IPC bridge
+  // so the dedicated toast window shows the alert (visible even when
+  // the main app is hidden to the tray).
   const { toastConfig } = useAppStore.getState();
+  addToast(record);
+
   if (typeof window !== 'undefined' && window.callerflash?.toast?.show) {
     window.callerflash.toast.show({
       id: record.id,
@@ -62,8 +63,6 @@ export function simulateIncomingCall(source: 'dashboard' | 'toast-settings' | 'b
         maxWidth: toastConfig.maxWidth,
       },
     });
-  } else {
-    addToast(record);
   }
 
   addDiagnosticLog({
