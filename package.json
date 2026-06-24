@@ -73,8 +73,8 @@
     },
     "publish": null,
     "extraResources": [
-      { "from": "build/tray-icon.ico", "to": "tray-icon.ico" },
-      { "from": "build/tray-icon.png", "to": "tray-icon.png" }
+      { "from": "build/cglogo.ico", "to": "cflogo.ico" },
+      { "from": "build/cflogo.png", "to": "cflogo.png" }
     ],
     "linux": {
       "target": [
