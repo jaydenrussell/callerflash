@@ -62,6 +62,7 @@ export interface UpdateInfo {
   updateAvailable: boolean;
   lastChecked: Date | null;
   autoUpdate: boolean;
+  autoDownload: boolean;
   updateChannel: 'stable' | 'beta' | 'nightly';
   updateCheckFrequency: 'off' | 'daily' | 'weekly' | 'monthly';
   githubRepo: string;
@@ -81,6 +82,7 @@ interface PersistedUiSettings {
   lastCheckedAt?: string; // ISO date — Date isn't serializable through JSON
   updateChannel?: 'stable' | 'beta' | 'nightly';
   autoUpdate?: boolean;
+  autoDownload?: boolean;
   toastConfig?: Partial<ToastConfig>;
   releasePageUrl?: string;
 }
@@ -200,6 +202,7 @@ const defaultUpdateInfo: UpdateInfo = {
   updateAvailable: false,
   lastChecked: persistedUi.lastCheckedAt ? new Date(persistedUi.lastCheckedAt) : null,
   autoUpdate: persistedUi.autoUpdate ?? true,
+  autoDownload: persistedUi.autoDownload ?? true,
   updateChannel: persistedUi.updateChannel ?? 'stable',
   updateCheckFrequency: persistedUi.updateCheckFrequency ?? 'daily',
   githubRepo: __APP_REPO__,
@@ -288,6 +291,7 @@ export const useAppStore = create<AppState>((set) => ({
       toastDragPosition: s.toastDragPosition,
       updateChannel: next.updateChannel,
       autoUpdate: next.autoUpdate,
+      autoDownload: next.autoDownload,
       updateCheckFrequency: next.updateCheckFrequency,
       lastCheckedAt: next.lastChecked ? next.lastChecked.toISOString() : undefined,
       releasePageUrl: next.releasePageUrl || undefined,

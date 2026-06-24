@@ -262,7 +262,7 @@ function createToastWindow() {
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
-    resizable: true, // user can resize from corner drag; size persists
+    resizable: false,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
