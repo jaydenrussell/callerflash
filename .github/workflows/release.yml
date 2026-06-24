@@ -177,6 +177,10 @@ jobs:
     needs: [route, build]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v5
         with:
           name: callerflash-build-${{ needs.route.outputs.version }}
@@ -290,6 +294,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v5
         with:
           name: callerflash-signed-${{ needs.route.outputs.version }}
