@@ -559,9 +559,9 @@ export function AutoUpdate() {
 
       {/* ── Prominent update-available banner ─────────────────────── */}
       {updateInfo.updateAvailable && (phase === 'idle' || phase === 'ready-to-download' || phase === 'ready') && (
-        <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-gradient-to-r from-win-accent/10 to-blue-500/10 border border-win-accent/30">
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-win-accent/20 flex items-center justify-center">
-            <Download className="w-5 h-5 text-win-accent" />
+        <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500/15 to-yellow-500/10 border border-amber-400/40">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-400/20 flex items-center justify-center">
+            <Download className="w-5 h-5 text-amber-400" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-win-text">

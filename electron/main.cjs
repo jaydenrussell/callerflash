@@ -49,6 +49,7 @@ function createWindow() {
     minWidth: 360,
     minHeight: 400,
     title: 'CallerFlash',
+    icon: loadTrayIcon(),
     autoHideMenuBar: true,
     // Native Windows 11 styling hints
     titleBarStyle: 'hidden',
@@ -97,13 +98,14 @@ function createWindow() {
 
 // ── Tray icon + menu ───────────────────────────────────────────────────
 function loadTrayIcon() {
-  // Tray-specific icon (transparent background, brand-color square +
-  // "CF" mark). Falls back through progressively more generic icons.
-  // Untitled.png is the source artwork (448×383 RGBA); the pre-built
-  // tray-icon.{ico,png} are the properly-sized derivatives generated
-  // from it at build time. On Windows the .ico is preferred (multi-
-  // resolution); on Linux/macOS the .png with alpha channel works best.
+  // Tray-specific icon (transparent background). In a packaged build the
+  // build/ directory is NOT inside app.asar — extraResources copies the
+  // files into process.resourcesPath. Try the packaged location first,
+  // then fall back to the source-tree location (dev mode).
+  const resPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
   const candidates = [
+    path.join(resPath, 'tray-icon.ico'),
+    path.join(resPath, 'tray-icon.png'),
     path.join(__dirname, '../build/tray-icon.ico'),
     path.join(__dirname, '../build/tray-icon.png'),
     path.join(__dirname, '../build/Untitled.png'),

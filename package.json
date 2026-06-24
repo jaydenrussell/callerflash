@@ -72,6 +72,10 @@
       "installerHeaderIcon": "build/icon.ico"
     },
     "publish": null,
+    "extraResources": [
+      { "from": "build/tray-icon.ico", "to": "tray-icon.ico" },
+      { "from": "build/tray-icon.png", "to": "tray-icon.png" }
+    ],
     "linux": {
       "target": [
         {
