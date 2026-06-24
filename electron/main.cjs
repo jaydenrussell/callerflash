@@ -438,7 +438,9 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
     return;
   }
 
-  const fileName = parsed.pathname.split('/').pop() || 'CallerFlash-Update.exe';
+  let fileName;
+  try { fileName = decodeURIComponent(parsed.pathname.split('/').pop()); } catch { fileName = null; }
+  if (!fileName || !fileName.includes('.')) fileName = 'CallerFlash-Update.exe';
   const tmpDir = app.getPath('temp');
   const filePath = path.join(tmpDir, `callerflash-update-${Date.now()}-${fileName}`);
 
@@ -497,7 +499,7 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
     const child = spawn(savedPath, [], {
       detached: true,
       stdio: 'ignore',
-      shell: true,
+      shell: process.platform === 'win32',
     });
     child.unref();
 
