@@ -134,12 +134,12 @@ export function AutoUpdate() {
         return;
       }
 
-      const artifact = parseGithubRelease(candidate);
+      const artifact = await parseGithubRelease(candidate);
       if (!artifact) {
         addDiagnosticLog({
           level: 'warning',
           category: 'UPDATE',
-          message: `Release ${candidate.tag_name} is missing required assets (binary, SHA256SUMS, .sig)`,
+          message: `Release ${candidate.tag_name} is missing required assets (binary, SHA256SUMS, .sig) or the assets could not be fetched`,
         });
         setPhase('idle');
         return;

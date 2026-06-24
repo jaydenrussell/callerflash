@@ -218,17 +218,26 @@ export async function verifyUpdateArtifact(
 
 /**
  * Parse a GitHub release JSON object into our internal artifact shape,
- * pulling sha256 + signature from the attached assets. This is the ONLY
- * place we touch the GitHub API — the rest of the app never sees raw
- * release JSON.
+ * fetching SHA256SUMS + .sig so the caller has real values to verify.
+ *
+ * SHA256SUMS looks like:
+ *     <sha256-hex>   <basename>
+ *     abc123…  CallerFlash-Setup-1.5.0.exe
+ *     def456…  CallerFlash-Setup-1.5.0.exe.blockmap
+ *
+ * We match on the binary's basename (two-space separator per `sha256sum`),
+ * so the field order in the file doesn't matter.
+ *
+ * Returns null if any required asset is missing OR if SHA256SUMS / .sig
+ * can't be fetched — the verifier cannot proceed without them.
  */
-export function parseGithubRelease(release: {
+export async function parseGithubRelease(release: {
   tag_name: string;
   published_at: string;
   prerelease: boolean;
   body: string;
   assets: Array<{ name: string; browser_download_url: string }>;
-}): UpdateArtifact | null {
+}): Promise<UpdateArtifact | null> {
   // Accept "v1.5.0" or "1.5.0"
   const versionMatch = release.tag_name.match(/v?(\d+\.\d+\.\d+(?:-[\w.]+)?)/);
   if (!versionMatch) return null;
@@ -240,14 +249,50 @@ export function parseGithubRelease(release: {
 
   if (!binary || !shaAsset || !sigAsset) return null;
 
+  // Fetch SHA256SUMS (text) and parse the line that matches the binary.
+  let sha256 = '';
+  try {
+    const shaResp = await fetch(shaAsset.browser_download_url);
+    if (shaResp.ok) {
+      const shaText = await shaResp.text();
+      const basename = binary.name;
+      const line = shaText
+        .split('\n')
+        .map((l) => l.trim())
+        .find((l) => l.endsWith(basename) || l.endsWith('*' + basename));
+      if (line) {
+        // sha256sum output format: `<hex><two-spaces><name>` (or `*<name>` on
+        // binary-mode line). Strip everything after the hex.
+        const match = line.match(/^([a-f0-9]{64})/i);
+        if (match) sha256 = match[1].toLowerCase();
+      }
+    }
+  } catch {
+    // Network failure — leave sha256 empty so verifier refuses.
+  }
+  if (!sha256) return null;
+
+  // Fetch the detached .sig (binary) and base64-encode it so it can be
+  // round-tripped through our verifier.
+  let signatureB64 = '';
+  try {
+    const sigResp = await fetch(sigAsset.browser_download_url);
+    if (sigResp.ok) {
+      const buf = new Uint8Array(await sigResp.arrayBuffer());
+      // Ed25519 sigs are 64 bytes — String.fromCharCode spread is fine.
+      signatureB64 = btoa(String.fromCharCode(...buf));
+    }
+  } catch {
+    // Leave empty — verifier will refuse.
+  }
+  if (!signatureB64) return null;
+
   return {
     version,
     releaseDate: release.published_at,
     downloadUrl: binary.browser_download_url,
-    sha256: '',
-    // In production, the main process would download SHA256SUMS and the .sig,
-    // then decode and verify. For the demo we mark them as pending download.
-    signatureB64: '',
+    sha256,
+    signatureB64,
     notes: release.body,
     prerelease: release.prerelease,
   };
