@@ -516,16 +516,11 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
     return;
   }
 
-  let fileName;
-  try {
-    const segs = parsed.pathname.split('/');
-    fileName = decodeURIComponent(segs[segs.length - 1] || '');
-  } catch { fileName = ''; }
-  if (!/\.(exe|msi|deb|AppImage|dmg|zip)$/i.test(fileName)) {
-    fileName = (fileName || 'CallerFlash-Update').replace(/[^a-zA-Z0-9._-]/g, '') + '.exe';
-  }
+  // Always use a clean fixed filename to avoid issues with complex
+  // multi-dot names from GitHub (e.g. CallerFlash.Setup.1.5.0-nightly.bfb419d.exe)
+  // where Windows can misparse the extension.
   const tmpDir = app.getPath('temp');
-  const filePath = path.join(tmpDir, `callerflash-update-${Date.now()}-${fileName}`);
+  const filePath = path.join(tmpDir, 'CallerFlash-Update.exe');
 
   // Notify the renderer that download + install is starting.
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -574,15 +569,30 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
     const savedPath = await download(downloadUrl);
     console.log('[updater] Downloaded to:', savedPath);
 
+    // Verify the file exists and is an .exe before launching.
+    if (!fs.existsSync(savedPath)) {
+      throw new Error('Downloaded file not found at ' + savedPath);
+    }
+    const stats = fs.statSync(savedPath);
+    if (stats.size < 1000000) {
+      throw new Error('Downloaded file is too small (' + stats.size + ' bytes) — likely not a valid installer');
+    }
+    // Ensure the file has .exe extension (Windows needs this to execute it).
+    let execPath = savedPath;
+    if (process.platform === 'win32' && !savedPath.toLowerCase().endsWith('.exe')) {
+      execPath = savedPath + '.exe';
+      fs.renameSync(savedPath, execPath);
+    }
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('updater:status', { status: 'installing', message: 'Launching installer…' });
     }
 
     // Launch the installer and quit the app so the installer can replace files.
-    const child = spawn(savedPath, [], {
+    const child = spawn(execPath, [], {
       detached: true,
       stdio: 'ignore',
-      shell: process.platform === 'win32',
+      shell: false,
     });
     child.unref();
 
