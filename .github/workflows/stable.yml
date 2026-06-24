@@ -1,16 +1,13 @@
 name: Release — Stable
 
-# Triggered by:
-#   • push to the `stable` branch
-#   • manual dispatch
+# Triggered by manual dispatch ONLY.
+# To promote from beta → stable:
+#   1. Merge beta into the stable branch
+#   2. Manually dispatch this workflow
 #
 # Build context: the `stable` branch HEAD.
-# Promote from beta by merging beta → stable (PR or fast-forward).
 
 on:
-  push:
-    branches:
-      - stable
   workflow_dispatch:
 
 permissions:
