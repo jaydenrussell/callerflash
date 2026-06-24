@@ -240,6 +240,11 @@ jobs:
           # GitHub Actions preserves cwd across steps within a job.
           # Snap back to the workspace root before invoking our script.
           cd "$GITHUB_WORKSPACE"
+          echo "DEBUG: cwd=$(pwd)"
+          echo "DEBUG: GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          echo "DEBUG: scripts/ contents:"
+          ls -la scripts/ || echo "scripts/ not found"
+          echo "DEBUG: generate-latest-yml.cjs exists? $(test -f scripts/generate-latest-yml.cjs && echo YES || echo NO)"
           CHANNEL="${{ needs.route.outputs.channel }}"
           VERSION="${{ needs.route.outputs.version }}"
           # electron-updater reads `latest.yml` for stable. For beta/nightly,
@@ -247,10 +252,10 @@ jobs:
           # the appropriate `channel` field.
           case "$CHANNEL" in
             beta)
-              node scripts/generate-latest-yml.cjs release "$VERSION" beta.yml beta
+              node "$GITHUB_WORKSPACE/scripts/generate-latest-yml.cjs" release "$VERSION" beta.yml beta
               ;;
             nightly)
-              node scripts/generate-latest-yml.cjs release "$VERSION" nightly.yml nightly
+              node "$GITHUB_WORKSPACE/scripts/generate-latest-yml.cjs" release "$VERSION" nightly.yml nightly
               ;;
             stable)
               echo "Stable channel: latest.yml already generated in build job"
