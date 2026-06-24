@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Phone, Settings, Bell, Activity,
-  Download, Info, Wifi, WifiOff
+  RefreshCw, Info, Wifi, WifiOff
 } from 'lucide-react';
 import { useAppStore, type TabId } from '../store/useAppStore';
 import { cn } from '../utils/cn';
@@ -11,7 +11,7 @@ const navItems: { id: TabId; label: string; icon: React.ComponentType<any> }[] =
   { id: 'settings', label: 'SIP Settings', icon: Settings },
   { id: 'toast', label: 'Toast Config', icon: Bell },
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
-  { id: 'update', label: 'Auto Update', icon: Download },
+  { id: 'update', label: 'Updates', icon: RefreshCw },
   { id: 'about', label: 'About', icon: Info },
 ];
 

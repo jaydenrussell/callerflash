@@ -43,6 +43,13 @@ contextBridge.exposeInMainWorld('callerflash', {
     openExternal: (url) => ipcRenderer.send('shell:open-external', url),
   },
 
+  // ── System notifications (Electron-only) ──────────────────────
+  // In the production build, shows a native OS notification. In the
+  // web demo, this is a no-op (the renderer swallows the call).
+  notify: {
+    show: (title, body) => ipcRenderer.send('notify:show', title, body),
+  },
+
   // ── Auto-updater ────────────────────────────────────────────────
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),

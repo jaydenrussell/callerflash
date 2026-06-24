@@ -54,7 +54,14 @@ function TitleBar({ compact }: { compact: boolean }) {
   };
 
   return (
-    <div className="h-9 bg-win-card border-b border-win-border flex items-center justify-between select-none flex-shrink-0">
+    // Titlebar is the OS drag region. The `WebkitAppRegion: drag`
+    // makes the whole bar draggable, and `no-drag` on the buttons
+    // below keeps them clickable. Required because we use
+    // `titleBarStyle: 'hidden'` so the OS chrome is hidden.
+    <div
+      className="h-9 bg-win-card border-b border-win-border flex items-center justify-between select-none flex-shrink-0"
+      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+    >
       <div className="flex items-center gap-2 px-3 min-w-0 flex-1">
         <div className="w-4 h-4 rounded bg-gradient-to-br from-win-accent to-blue-600 flex items-center justify-center flex-shrink-0">
           <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="3">
@@ -76,17 +83,19 @@ function TitleBar({ compact }: { compact: boolean }) {
           />
         )}
       </div>
-      <div className="flex h-full flex-shrink-0">
+      <div className="flex h-full flex-shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <button
           onClick={hideToTray}
           className="px-3 sm:px-4 h-full hover:bg-win-surface-hover transition-colors flex items-center"
           title="Minimize to tray"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <Minus className="w-3.5 h-3.5 text-win-text-secondary" />
         </button>
         <button
           className="px-3 sm:px-4 h-full hover:bg-win-surface-hover transition-colors flex items-center"
           title="Window mode"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <Square className="w-3 h-3 text-win-text-secondary" />
         </button>
@@ -94,6 +103,7 @@ function TitleBar({ compact }: { compact: boolean }) {
           onClick={hideToTray}
           className="px-3 sm:px-4 h-full hover:bg-red-600 transition-colors flex items-center group"
           title="Hide to system tray"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <X className="w-3.5 h-3.5 text-win-text-secondary group-hover:text-white" />
         </button>

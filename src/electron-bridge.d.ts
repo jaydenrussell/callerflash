@@ -31,6 +31,11 @@ declare global {
     openExternal: (url: string) => void;
   }
 
+  interface CallerFlashNotifyApi {
+    /** Show a native OS notification. No-op in web demo. */
+    show: (title: string, body: string) => void;
+  }
+
   type UpdateChannel = 'stable' | 'beta' | 'nightly';
 
   interface CallerFlashUpdaterStatus {
@@ -58,6 +63,7 @@ declare global {
     tray: CallerFlashTrayApi;
     safeStorage: CallerFlashSafeStorageApi;
     shell: CallerFlashShellApi;
+    notify: CallerFlashNotifyApi;
     updater: CallerFlashUpdaterApi;
     platform: CallerFlashPlatformInfo;
   }

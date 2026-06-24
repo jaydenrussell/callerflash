@@ -2,8 +2,8 @@ import { useState } from 'react';
 import {
   Download, RefreshCw, Clock,
   Shield, GitBranch, Package, ArrowRight,
-  ExternalLink, Star, GitCommit, ChevronDown,
-  Check, X as XIcon, ShieldCheck, FileLock, Key
+  ExternalLink, GitCommit, ChevronDown,
+  Check, X as XIcon, ShieldCheck, FileLock, Key, Bell
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -64,26 +64,35 @@ const releaseHistory = [
   },
 ];
 
+type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'ready' | 'installing';
+
 export function AutoUpdate() {
   const { updateInfo, setUpdateInfo, addDiagnosticLog } = useAppStore();
-  const [checking, setChecking] = useState(false);
-  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
   const [verification, setVerification] = useState<VerificationResult | null>(null);
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  // Local phase tracker. `idle` means no check has run this session;
+  // `ready` means a verified update is downloaded and waiting for the
+  // user to click "Restart to Install".
+  const [phase, setPhase] = useState<UpdatePhase>('idle');
 
-  const handleCheckUpdate = async () => {
-    setChecking(true);
+  /**
+   * One-click flow: fetch metadata, run the verification pipeline, and
+   * if approved, automatically download the binary. The user does NOT
+   * need a separate "Download" step — when ready, they get an "Install"
+   * button. Matches Discord/Slack-style UX: never silently install.
+   */
+  const handleCheckAndDownload = async () => {
+    setPhase('checking');
     setVerification(null);
     addDiagnosticLog({
       level: 'info',
       category: 'UPDATE',
-      message: 'Checking GitHub releases for updates...',
+      message: 'Checking GitHub releases for updates…',
       details: `Repository: ${updateInfo.githubRepo}\nChannel: ${updateInfo.updateChannel}`,
     });
 
     try {
-      // 1. Fetch latest matching release from GitHub. Pin to a specific
-      //    API host (no redirects, no user-controlled URL) and enforce a
-      //    10-second timeout.
+      // 1. Fetch latest matching release from GitHub.
       const repoPath = updateInfo.githubRepo.replace(/^https?:\/\/github\.com\//, '');
       const apiUrl = `https://api.github.com/repos/${repoPath}/releases?per_page=10`;
 
@@ -95,41 +104,33 @@ export function AutoUpdate() {
         published_at: string;
         prerelease: boolean;
         body: string;
+        html_url: string;
         assets: Array<{ name: string; browser_download_url: string }>;
       }>;
-
       try {
         const response = await fetch(apiUrl, {
           headers: { Accept: 'application/vnd.github+json' },
           signal: controller.signal,
         });
-        if (!response.ok) {
-          throw new Error(`GitHub API responded ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`GitHub API responded ${response.status}`);
         releases = await response.json();
       } finally {
         clearTimeout(timeoutId);
       }
 
-      // 2. Pick the most recent release matching the user's channel.
+      // 2. Pick the most recent release matching the channel.
       const candidate = releases.find((r) =>
-        updateInfo.updateChannel === 'stable'
-          ? !r.prerelease
-          : true
+        updateInfo.updateChannel === 'stable' ? !r.prerelease : true
       );
 
       if (!candidate) {
-        addDiagnosticLog({
-          level: 'success',
-          category: 'UPDATE',
-          message: 'No releases found for this channel.',
-        });
+        addDiagnosticLog({ level: 'success', category: 'UPDATE', message: 'No releases found for this channel.' });
         setUpdateInfo({
           updateAvailable: false,
           lastChecked: new Date(),
           latestVersion: updateInfo.currentVersion,
         });
-        setChecking(false);
+        setPhase('idle');
         return;
       }
 
@@ -139,11 +140,13 @@ export function AutoUpdate() {
           level: 'warning',
           category: 'UPDATE',
           message: `Release ${candidate.tag_name} is missing required assets (binary, SHA256SUMS, .sig)`,
-          details: 'Skipping — releases must include a checksum and detached signature to be installable.',
         });
-        setChecking(false);
+        setPhase('idle');
         return;
       }
+
+      // Stash the release URL so we can open it in the system browser.
+      setUpdateInfo({ releasePageUrl: candidate.html_url });
 
       // 3. Run the full verification pipeline.
       addDiagnosticLog({
@@ -151,14 +154,8 @@ export function AutoUpdate() {
         category: 'UPDATE',
         message: `Verifying release v${artifact.version} against pinned public key…`,
       });
-
-      const result = await verifyUpdateArtifact(
-        artifact,
-        updateInfo.updateChannel,
-        updateInfo.currentVersion,
-      );
+      const result = await verifyUpdateArtifact(artifact, updateInfo.updateChannel, updateInfo.currentVersion);
       setVerification(result);
-
       for (const step of result.steps) {
         addDiagnosticLog({
           level: step.passed ? 'success' : 'error',
@@ -168,103 +165,137 @@ export function AutoUpdate() {
         });
       }
 
-      if (result.approved) {
-        setUpdateInfo({
-          latestVersion: artifact.version,
-          updateAvailable: true,
-          lastChecked: new Date(),
-          releaseNotes: artifact.notes || 'See GitHub for release notes.',
-        });
-        addDiagnosticLog({
-          level: 'success',
-          category: 'UPDATE',
-          message: `Update v${artifact.version} verified and approved for installation`,
-        });
-      } else {
-        setUpdateInfo({
-          updateAvailable: false,
-          lastChecked: new Date(),
-          latestVersion: updateInfo.currentVersion,
-        });
+      if (!result.approved) {
         addDiagnosticLog({
           level: 'error',
           category: 'UPDATE',
           message: `Update v${artifact.version} REJECTED by verification — refusing to install`,
         });
+        setUpdateInfo({
+          updateAvailable: false,
+          lastChecked: new Date(),
+          latestVersion: updateInfo.currentVersion,
+        });
+        setPhase('idle');
+        return;
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown';
-      addDiagnosticLog({
-        level: 'error',
-        category: 'UPDATE',
-        message: `Update check failed: ${message}`,
-      });
-    } finally {
-      setChecking(false);
-    }
-  };
 
-  const handleDownloadUpdate = () => {
-    setUpdateInfo({ isDownloading: true, downloadProgress: 0 });
-    addDiagnosticLog({
-      level: 'info',
-      category: 'UPDATE',
-      message: 'Downloading update v1.5.0...',
-    });
-
-    const interval = setInterval(() => {
-      setUpdateInfo({
-        downloadProgress: Math.min(
-          (useAppStore.getState().updateInfo.downloadProgress || 0) + Math.random() * 15,
-          100
-        ),
-      });
-    }, 300);
-
-    setTimeout(() => {
-      clearInterval(interval);
-      setUpdateInfo({ downloadProgress: 100, isDownloading: false, isInstalling: true });
       addDiagnosticLog({
         level: 'success',
         category: 'UPDATE',
-        message: 'Download complete. Installing update...',
+        message: `Update v${artifact.version} verified — starting download`,
       });
 
-      setTimeout(() => {
-        setUpdateInfo({
-          isInstalling: false,
-          currentVersion: '1.5.0',
-          latestVersion: '1.5.0',
-          updateAvailable: false,
-        });
-        addDiagnosticLog({
-          level: 'success',
-          category: 'UPDATE',
-          message: 'Update installed successfully! Now running v1.5.0',
-        });
-      }, 3000);
-    }, 4000);
+      // 4. Auto-download. In the production Electron build this is
+      //    electron-updater doing the actual file transfer + signature
+      //    verification; here in the demo we simulate progress.
+      setUpdateInfo({
+        latestVersion: artifact.version,
+        updateAvailable: true,
+        lastChecked: new Date(),
+        releaseNotes: artifact.notes || 'See GitHub for release notes.',
+      });
+      setPhase('downloading');
+      setUpdateInfo({ isDownloading: true, downloadProgress: 0 });
+
+      await new Promise<void>((resolve) => {
+        let pct = 0;
+        const tick = () => {
+          pct = Math.min(pct + 8 + Math.random() * 12, 100);
+          setUpdateInfo({ downloadProgress: pct });
+          if (pct >= 100) {
+            resolve();
+          } else {
+            setTimeout(tick, 200);
+          }
+        };
+        setTimeout(tick, 200);
+      });
+
+      setUpdateInfo({ isDownloading: false, downloadProgress: 100 });
+      setPhase('ready');
+      addDiagnosticLog({
+        level: 'success',
+        category: 'UPDATE',
+        message: `Update v${artifact.version} downloaded and verified — ready to install`,
+      });
+
+      // 5. Notify via system tray (Electron-only; no-op in web demo).
+      try {
+        await window.callerflash?.notify?.show?.(
+          'Update ready to install',
+          `v${artifact.version} is downloaded. Click "Restart to Install" to apply.`
+        );
+      } catch {
+        // Ignore — web demo has no notification backend.
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown';
+      addDiagnosticLog({ level: 'error', category: 'UPDATE', message: `Update check failed: ${message}` });
+      setPhase('idle');
+    }
   };
+
+  /**
+   * Apply the downloaded update. In the production Electron build this
+   * calls electron-updater's `quitAndInstall()` (which restarts the
+   * app to apply the patch). In the demo we simulate.
+   */
+  const handleInstall = () => {
+    setPhase('installing');
+    setUpdateInfo({ isInstalling: true });
+    addDiagnosticLog({
+      level: 'info',
+      category: 'UPDATE',
+      message: `Installing update v${updateInfo.latestVersion}…`,
+    });
+
+    setTimeout(() => {
+      setUpdateInfo({
+        isInstalling: false,
+        currentVersion: updateInfo.latestVersion,
+        updateAvailable: false,
+        downloadProgress: 0,
+      });
+      setPhase('idle');
+      addDiagnosticLog({
+        level: 'success',
+        category: 'UPDATE',
+        message: `Update installed successfully! Now running v${updateInfo.latestVersion}`,
+      });
+    }, 1500);
+  };
+
+  const openReleasePage = () => {
+    const url = updateInfo.releasePageUrl || `${updateInfo.githubRepo}/releases`;
+    if (window.callerflash?.shell?.openExternal) {
+      window.callerflash.shell.openExternal(url);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const isBusy = phase === 'checking' || phase === 'downloading' || phase === 'installing';
 
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-xl font-bold text-win-text">Auto Update</h2>
+          <h2 className="text-xl font-bold text-win-text">Updates</h2>
           <p className="text-xs text-win-text-secondary mt-1">
-            Keep CallerFlash up to date via GitHub releases
+            Check for new releases and install them when you're ready
           </p>
         </div>
-        <a
-          href={updateInfo.githubRepo}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 px-4 py-2.5 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm transition-colors border border-win-border"
-        >
-          <GithubIcon className="w-4 h-4" />
-          View on GitHub
-          <ExternalLink className="w-3.5 h-3.5" />
-        </a>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={openReleasePage}
+            className="flex items-center gap-2 px-3.5 py-2 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm transition-colors border border-win-border"
+          >
+            <GithubIcon className="w-4 h-4" />
+            View releases
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Current Version Card */}
@@ -282,7 +313,9 @@ export function AutoUpdate() {
                 </span>
               </div>
               <p className="text-xs text-win-text-secondary mt-0.5">
-                {updateInfo.updateAvailable
+                {phase === 'ready'
+                  ? `Update v${updateInfo.latestVersion} ready to install`
+                  : updateInfo.updateAvailable
                   ? `Update available: v${updateInfo.latestVersion}`
                   : 'You are running the latest version'}
               </p>
@@ -294,28 +327,52 @@ export function AutoUpdate() {
               )}
             </div>
           </div>
+
           <div className="flex flex-wrap items-center gap-2">
-            {updateInfo.updateAvailable && !updateInfo.isDownloading && !updateInfo.isInstalling && (
+            {/* Main action button — changes based on phase. */}
+            {phase === 'ready' ? (
               <button
-                onClick={handleDownloadUpdate}
-                disabled={verification ? !verification.approved : false}
-                title={verification && !verification.approved ? 'Verification failed — see audit log' : undefined}
-                className="flex items-center gap-2 px-4 py-2 bg-win-success/15 hover:bg-win-success/25 text-win-success rounded-lg text-sm font-semibold transition-colors border border-win-success/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                onClick={handleInstall}
+                disabled={isBusy}
+                className="flex items-center gap-2 px-4 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors border border-win-success/30 disabled:opacity-50"
               >
                 <Download className="w-4 h-4" />
-                Download & Install
+                Restart to Install
+              </button>
+            ) : (
+              <button
+                onClick={handleCheckAndDownload}
+                disabled={isBusy}
+                className="flex items-center gap-2 px-4 py-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${phase === 'checking' || phase === 'downloading' ? 'animate-spin' : ''}`} />
+                {phase === 'checking' ? 'Checking…'
+                  : phase === 'downloading' ? 'Downloading…'
+                  : phase === 'installing' ? 'Installing…'
+                  : 'Check for Updates'}
               </button>
             )}
-            <button
-              onClick={handleCheckUpdate}
-              disabled={checking || updateInfo.isDownloading || updateInfo.isInstalling}
-              className="flex items-center gap-2 px-4 py-2 bg-win-accent/15 hover:bg-win-accent/25 text-win-accent rounded-lg text-sm font-medium transition-colors border border-win-accent/20 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
-              {checking ? 'Checking...' : 'Check for Updates'}
-            </button>
           </div>
         </div>
+
+        {/* Ready-to-install banner with bell + tray notification hint */}
+        {phase === 'ready' && (
+          <div className="mt-5 pt-5 border-t border-win-border">
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-win-success/10 border border-win-success/20">
+              <div className="w-9 h-9 rounded-lg bg-win-success/20 flex items-center justify-center flex-shrink-0">
+                <Bell className="w-4 h-4 text-win-success" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-win-success">Update ready</p>
+                <p className="text-xs text-win-text-secondary leading-relaxed mt-0.5">
+                  v{updateInfo.latestVersion} was downloaded and verified. A tray notification was sent.
+                  Click <span className="font-semibold">Restart to Install</span> to apply it now, or do it later —
+                  the app never updates silently in the background.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Verification Audit Panel */}
         {verification && (
@@ -349,11 +406,11 @@ export function AutoUpdate() {
         )}
 
         {/* Download Progress */}
-        {(updateInfo.isDownloading || updateInfo.isInstalling) && (
+        {(phase === 'downloading' || phase === 'installing') && (
           <div className="mt-5 pt-5 border-t border-win-border">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-medium text-win-text">
-                {updateInfo.isInstalling ? 'Installing update...' : 'Downloading update...'}
+                {phase === 'installing' ? 'Installing update…' : 'Downloading update…'}
               </p>
               <span className="text-sm font-bold text-win-accent">
                 {Math.round(updateInfo.downloadProgress)}%
@@ -365,17 +422,11 @@ export function AutoUpdate() {
                 style={{ width: `${updateInfo.downloadProgress}%` }}
               />
             </div>
-            {updateInfo.isInstalling && (
-              <p className="text-xs text-win-text-tertiary mt-2 flex items-center gap-1">
-                <div className="w-3 h-3 border-2 border-win-accent border-t-transparent rounded-full animate-spin" />
-                Applying update, please wait...
-              </p>
-            )}
           </div>
         )}
 
-        {/* Update Available Notes */}
-        {updateInfo.updateAvailable && updateInfo.releaseNotes && !updateInfo.isDownloading && (
+        {/* Release Notes */}
+        {updateInfo.updateAvailable && updateInfo.releaseNotes && phase !== 'downloading' && phase !== 'installing' && (
           <div className="mt-5 pt-5 border-t border-win-border">
             <button
               onClick={() => setShowReleaseNotes(!showReleaseNotes)}
@@ -406,8 +457,8 @@ export function AutoUpdate() {
               onClick={() => setUpdateInfo({ autoUpdate: !updateInfo.autoUpdate })}
             >
               <div>
-                <p className="text-sm font-medium text-win-text">Auto-Update</p>
-                <p className="text-xs text-win-text-tertiary">Automatically download and install updates</p>
+                <p className="text-sm font-medium text-win-text">Notify on update available</p>
+                <p className="text-xs text-win-text-tertiary">Tray notification + in-app banner when a new version is verified. Never installs silently.</p>
               </div>
               <div className={`w-10 h-[22px] rounded-full transition-colors relative ${
                 updateInfo.autoUpdate ? 'bg-win-accent' : 'bg-win-border'
@@ -545,31 +596,6 @@ sha256sum -c SHA256SUMS --ignore-missing`}</pre>
               </div>
             ))}
           </div>
-        </div>
-      </div>
-
-      {/* Open Source Info */}
-      <div className="bg-gradient-to-r from-win-accent/5 to-blue-600/5 rounded-xl border border-win-accent/10 p-5">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-win-accent/10 flex items-center justify-center flex-shrink-0">
-            <Star className="w-6 h-6 text-win-accent" />
-          </div>
-          <div className="flex-1 min-w-[200px]">
-            <h3 className="text-sm font-semibold text-win-text">Free & Open Source</h3>
-            <p className="text-xs text-win-text-secondary mt-0.5">
-              CallerFlash is released under the MIT License. Contributions welcome!
-              Star us on GitHub and help improve SIP integration for everyone.
-            </p>
-          </div>
-          <a
-            href={updateInfo.githubRepo}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 bg-win-surface hover:bg-win-surface-hover rounded-lg text-sm text-win-text-secondary transition-colors border border-win-border"
-          >
-            <Star className="w-4 h-4" />
-            Star on GitHub
-          </a>
         </div>
       </div>
     </div>

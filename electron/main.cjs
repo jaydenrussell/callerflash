@@ -7,7 +7,7 @@
 //   • Persist the app across window-close events — only the tray "Quit"
 //     entry actually terminates the process.
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, safeStorage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, safeStorage, Notification } = require('electron');
 const path = require('path');
 
 // ── Single-instance lock ───────────────────────────────────────────────
@@ -208,6 +208,31 @@ ipcMain.on('shell:open-external', (_event, url) => {
   if (typeof url === 'string' && url.startsWith('https:')) {
     shell.openExternal(url);
   }
+});
+
+// ── IPC: system notifications (triggers a native OS toast) ─────────────
+// Used by the renderer when an update is verified + downloaded to let
+// the user know via the OS notification surface, in addition to the
+// tray menu.
+ipcMain.on('notify:show', (_event, title, body) => {
+  if (!app.isReady() || !Notification?.isSupported?.()) return;
+  const safeTitle = typeof title === 'string' ? title.slice(0, 120) : 'CallerFlash';
+  const safeBody = typeof body === 'string' ? body.slice(0, 240) : '';
+  const n = new Notification({
+    title: safeTitle,
+    body: safeBody,
+    silent: false,
+  });
+  n.show();
+  // If the main window exists, clicking the notification brings it
+  // forward so the user lands on the Updates tab.
+  n.on('click', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+    }
+  });
 });
 
 // ── IPC: safeStorage (DPAPI on Windows) ────────────────────────────────

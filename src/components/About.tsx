@@ -1,6 +1,6 @@
 import {
   Phone, ExternalLink, Shield,
-  Code, BookOpen, Zap, GitBranch
+  Code, BookOpen, Zap, GitBranch, Star
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
@@ -115,6 +115,31 @@ export function About() {
               <p className="text-xs text-win-text-tertiary">{tech.desc}</p>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Free & Open Source */}
+      <div className="bg-gradient-to-r from-win-accent/5 to-blue-600/5 rounded-xl border border-win-accent/10 p-5">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-win-accent/10 flex items-center justify-center flex-shrink-0">
+            <Star className="w-6 h-6 text-win-accent" />
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <h3 className="text-sm font-semibold text-win-text">Free & Open Source</h3>
+            <p className="text-xs text-win-text-secondary mt-0.5">
+              CallerFlash is released under the MIT License. Contributions welcome —
+              star us on GitHub and help improve SIP integration for everyone.
+            </p>
+          </div>
+          <a
+            href={updateInfo.githubRepo}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 bg-win-surface hover:bg-win-surface-hover rounded-lg text-sm text-win-text-secondary transition-colors border border-win-border"
+          >
+            <Star className="w-4 h-4" />
+            Star on GitHub
+          </a>
         </div>
       </div>
     </div>

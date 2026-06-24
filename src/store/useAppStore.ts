@@ -65,6 +65,7 @@ export interface UpdateInfo {
   updateChannel: 'stable' | 'beta' | 'nightly';
   githubRepo: string;
   releaseNotes: string;
+  releasePageUrl: string;
   downloadProgress: number;
   isDownloading: boolean;
   isInstalling: boolean;
@@ -185,6 +186,7 @@ const defaultUpdateInfo: UpdateInfo = {
   updateChannel: 'stable',
   githubRepo: 'https://github.com/jaydenrussell/callerflash',
   releaseNotes: '',
+  releasePageUrl: '',
   downloadProgress: 0,
   isDownloading: false,
   isInstalling: false,
