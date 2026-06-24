@@ -69,19 +69,23 @@ export function Sidebar({ collapsed }: SidebarProps) {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
+            const showUpdateBadge = item.id === 'update' && updateInfo.updateAvailable;
             return (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
                 title={item.label}
                 className={cn(
-                  'w-full flex items-center justify-center px-2 py-2.5 rounded-lg transition-all duration-150',
+                  'w-full flex items-center justify-center px-2 py-2.5 rounded-lg transition-all duration-150 relative',
                   isActive
                     ? 'bg-win-accent/15 text-win-accent border border-win-accent/20'
                     : 'text-win-text-secondary hover:bg-win-surface-hover hover:text-win-text border border-transparent'
                 )}
               >
                 <Icon className="w-[18px] h-[18px]" />
+                {showUpdateBadge && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400" />
+                )}
               </button>
             );
           })}
@@ -142,25 +146,29 @@ export function Sidebar({ collapsed }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
-                isActive
-                  ? 'bg-win-accent/15 text-win-accent border border-win-accent/20'
-                  : 'text-win-text-secondary hover:bg-win-surface-hover hover:text-win-text border border-transparent'
-              )}
-            >
-              <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-              <span className="truncate">{item.label}</span>
-            </button>
-          );
-        })}
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            const showUpdateBadge = item.id === 'update' && updateInfo.updateAvailable;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={cn(
+                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 relative',
+                  isActive
+                    ? 'bg-win-accent/15 text-win-accent border border-win-accent/20'
+                    : 'text-win-text-secondary hover:bg-win-surface-hover hover:text-win-text border border-transparent'
+                )}
+              >
+                <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+                <span className="truncate">{item.label}</span>
+                {showUpdateBadge && (
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                )}
+              </button>
+            );
+          })}
       </nav>
 
       {/* Version + single GitHub link (the only GitHub entry in the whole app) */}
