@@ -190,47 +190,36 @@ function createTray() {
   trayIconDefault = loadTrayIcon();
   tray = new Tray(trayIconDefault);
 
-  // Pre-generate colored icon variants for SIP status.
-  // Each variant takes the base cflogo icon and blends it onto a
-  // colored background circle, so the whole tray icon reflects the
-  // current SIP state at a glance.
+  // Pre-generate icon variants with a status dot in the top-right corner.
+  // The base icon is kept exactly as-is (transparent background preserved).
+  // A small solid circle is drawn in the top-right corner for SIP status.
   const size = 32;
   const baseBuf = trayIconDefault.resize({ width: size, height: size }).toBitmap();
 
   function makeStatusIcon(cr, cg, cb) {
     // nativeImage.createFromBuffer expects BGRA pixel format.
-    const buf = Buffer.alloc(size * size * 4, 0);
-    const cx = size / 2;
-    const cy = size / 2;
-    const radius = size / 2 - 1;
+    // Start with a copy of the base icon.
+    const buf = Buffer.from(baseBuf);
+
+    // Draw a solid colored circle in the top-right corner.
+    const dotCx = size - 6; // 6px from right edge
+    const dotCy = 6;        // 6px from top edge
+    const dotR = 5;         // radius
+
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
-        const dx = x - cx;
-        const dy = y - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const i = (y * size + x) * 4;
-        if (dist <= radius) {
-          const bi = i;
-          const srcB = baseBuf[bi] || 0;     // BGRA: B first
-          const srcG = baseBuf[bi + 1] || 0;
-          const srcR = baseBuf[bi + 2] || 0;
-          const srcA = baseBuf[bi + 3] || 0;
-          if (srcA > 128) {
-            // Icon pixel: keep the icon with minimal tinting.
-            buf[i]     = Math.min(255, (srcB * 0.85 + cb * 0.15) | 0); // B
-            buf[i + 1] = Math.min(255, (srcG * 0.85 + cg * 0.15) | 0); // G
-            buf[i + 2] = Math.min(255, (srcR * 0.85 + cr * 0.15) | 0); // R
-            buf[i + 3] = 255; // A
-          } else {
-            // Transparent pixel: fill with status color at 20% opacity.
-            buf[i]     = cb; // B
-            buf[i + 1] = cg; // G
-            buf[i + 2] = cr; // R
-            buf[i + 3] = 51; // A (20% of 255 ≈ 51)
-          }
+        const dx = x - dotCx;
+        const dy = y - dotCy;
+        if (dx * dx + dy * dy <= dotR * dotR) {
+          const i = (y * size + x) * 4;
+          buf[i]     = cb; // B
+          buf[i + 1] = cg; // G
+          buf[i + 2] = cr; // R
+          buf[i + 3] = 255; // A (fully opaque)
         }
       }
     }
+
     return nativeImage.createFromBuffer(buf, { width: size, height: size });
   }
 
