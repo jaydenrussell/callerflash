@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Download, RefreshCw,
-  Shield, GitBranch, ArrowRight,
+  Shield, GitBranch,
   ExternalLink, GitCommit, ChevronDown,
   Check, X as XIcon, ShieldCheck, FileLock, Key, Bell
 } from 'lucide-react';
@@ -12,6 +12,16 @@ import {
   type VerificationResult,
 } from '../security/updateVerifier';
 
+interface GithubRelease {
+  tag_name: string;
+  name: string;
+  published_at: string;
+  prerelease: boolean;
+  body: string;
+  html_url: string;
+  assets: Array<{ name: string; browser_download_url: string }>;
+}
+
 function GithubIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -20,49 +30,37 @@ function GithubIcon({ className }: { className?: string }) {
   );
 }
 
-const releaseHistory = [
-  {
-    version: 'v1.4.2',
-    date: '2025-12-15',
-    current: true,
-    notes: [
-      'Fixed clipboard auto-copy on Windows 11 23H2',
-      'Improved toast rendering performance',
-      'Added Acuity Scheduler integration hints',
-    ],
-  },
-  {
-    version: 'v1.4.1',
-    date: '2025-11-28',
-    current: false,
-    notes: [
-      'Added configurable toast border radius',
-      'Fixed SIP re-registration timer',
-      'Improved NAT traversal detection',
-    ],
-  },
-  {
-    version: 'v1.4.0',
-    date: '2025-11-10',
-    current: false,
-    notes: [
-      'Full toast notification customization',
-      'New diagnostics panel with export',
-      'Support for TLS encryption',
-      'Dark mode improvements',
-    ],
-  },
-  {
-    version: 'v1.3.0',
-    date: '2025-10-01',
-    current: false,
-    notes: [
-      'Auto-update from GitHub releases',
-      'Call history export to CSV',
-      'Multiple SIP provider preset selection',
-    ],
-  },
-];
+/**
+ * Pull the bullet-point changelog out of a GitHub release body. GitHub
+ * uses simple markdown — lines starting with `-` or `*` are bullets.
+ * We keep the first N non-empty bullets and skip any duplicate header
+ * lines so each entry in the UI shows real per-version changes.
+ */
+function parseChangelog(body: string, max = 6): string[] {
+  if (!body) return [];
+  const out: string[] = [];
+  for (const raw of body.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const bullet = line.match(/^[-*]\s+(.*)/);
+    if (!bullet) continue;
+    const text = bullet[1].replace(/^\*\*(.+?)\*\*:?/, '$1').replace(/`([^`]+)`/g, '$1').trim();
+    if (!text) continue;
+    if (out.includes(text)) continue;
+    out.push(text);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function formatReleaseDate(iso: string): string {
+  const d = new Date(iso);
+  // YYYY-MM-DD — compact, no time, locale-independent
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'ready' | 'installing';
 
@@ -70,6 +68,8 @@ export function AutoUpdate() {
   const { updateInfo, setUpdateInfo, addDiagnosticLog } = useAppStore();
   const [verification, setVerification] = useState<VerificationResult | null>(null);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  // Real releases fetched from GitHub — backs the Release History list.
+  const [releases, setReleases] = useState<GithubRelease[]>([]);
   // Local phase tracker. `idle` means no check has run this session;
   // `ready` means a verified update is downloaded and waiting for the
   // user to click "Restart to Install".
@@ -99,27 +99,23 @@ export function AutoUpdate() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
-      let releases: Array<{
-        tag_name: string;
-        published_at: string;
-        prerelease: boolean;
-        body: string;
-        html_url: string;
-        assets: Array<{ name: string; browser_download_url: string }>;
-      }>;
+      let fetched: GithubRelease[];
       try {
         const response = await fetch(apiUrl, {
           headers: { Accept: 'application/vnd.github+json' },
           signal: controller.signal,
         });
         if (!response.ok) throw new Error(`GitHub API responded ${response.status}`);
-        releases = await response.json();
+        fetched = await response.json();
       } finally {
         clearTimeout(timeoutId);
       }
 
+      // Cache the full list for the Release History panel.
+      setReleases(fetched);
+
       // 2. Pick the most recent release matching the channel.
-      const candidate = releases.find((r) =>
+      const candidate = fetched.find((r) =>
         updateInfo.updateChannel === 'stable' ? !r.prerelease : true
       );
 
@@ -502,42 +498,70 @@ sha256sum -c SHA256SUMS --ignore-missing`}</pre>
           </div>
         </div>
 
-        {/* Release History */}
+        {/* Release History — real GitHub releases, rendered professionally */}
         <div className="bg-win-surface rounded-xl border border-win-border p-3 lg:col-span-2">
-          <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
-            <GitCommit className="w-4 h-4 text-win-accent" />
-            Release History
-          </h3>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {releaseHistory.map((release) => (
-              <div
-                key={release.version}
-                className={`p-2.5 rounded-lg border ${
-                  release.current ? 'bg-win-accent/5 border-win-accent/20' : 'bg-win-card border-win-border/50'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-win-text">{release.version}</span>
-                    {release.current && (
-                      <span className="px-1.5 py-0.5 bg-win-accent/15 text-win-accent rounded text-[10px] font-semibold">
-                        CURRENT
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-win-text flex items-center gap-2">
+              <GitCommit className="w-4 h-4 text-win-accent" />
+              Release History
+            </h3>
+            {releases.length > 0 && (
+              <span className="text-[10px] text-win-text-tertiary">
+                {releases.length} release{releases.length === 1 ? '' : 's'}
+              </span>
+            )}
+          </div>
+
+          {releases.length === 0 ? (
+            <p className="text-xs text-win-text-tertiary py-3 text-center">
+              {phase === 'idle'
+                ? 'Click "Check for Updates" to load the changelog.'
+                : 'No releases found.'}
+            </p>
+          ) : (
+            <div className="divide-y divide-win-border/40">
+              {releases.slice(0, 6).map((release) => {
+                const isCurrent = release.tag_name.replace(/^v/, '') === updateInfo.currentVersion;
+                const notes = parseChangelog(release.body);
+                return (
+                  <div key={release.tag_name} className="py-2 first:pt-0 last:pb-0">
+                    <div className="flex items-baseline justify-between gap-3 mb-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-bold text-win-text truncate">
+                          {release.tag_name}
+                        </span>
+                        {isCurrent && (
+                          <span className="px-1.5 py-0.5 bg-win-accent/15 text-win-accent rounded text-[10px] font-semibold flex-shrink-0">
+                            CURRENT
+                          </span>
+                        )}
+                        {release.prerelease && !isCurrent && (
+                          <span className="px-1.5 py-0.5 bg-win-warning/15 text-win-warning rounded text-[10px] font-semibold flex-shrink-0">
+                            PRE-RELEASE
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-win-text-tertiary tabular-nums flex-shrink-0">
+                        {formatReleaseDate(release.published_at)}
                       </span>
+                    </div>
+                    {notes.length > 0 && (
+                      <ul className="space-y-0.5">
+                        {notes.map((note, i) => (
+                          <li
+                            key={i}
+                            className="text-[11px] text-win-text-secondary leading-snug pl-3 relative before:content-['–'] before:absolute before:left-0 before:text-win-text-tertiary"
+                          >
+                            {note}
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
-                  <span className="text-[11px] text-win-text-tertiary">{release.date}</span>
-                </div>
-                <ul className="space-y-0.5">
-                  {release.notes.map((note, i) => (
-                    <li key={i} className="flex items-start gap-1 text-[11px] text-win-text-secondary">
-                      <ArrowRight className="w-2.5 h-2.5 text-win-text-tertiary mt-0.5 flex-shrink-0" />
-                      {note}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
