@@ -426,16 +426,7 @@ export function AutoUpdate() {
       setDownloadedBlobUrl(null);
     }
 
-    let fileName: string;
-    try {
-      const urlPath = new URL(artifact.downloadUrl).pathname;
-      const segs = urlPath.split('/');
-      fileName = decodeURIComponent(segs[segs.length - 1] || '');
-    } catch { fileName = ''; }
-    if (!/\.(exe|msi|deb|AppImage|dmg|zip)$/i.test(fileName)) {
-      fileName = `CallerFlash-${artifact.version}.exe`;
-    }
-    setDownloadedFileName(fileName);
+    setDownloadedFileName('CallerFlash-Update.exe');
 
     try {
       const response = await fetch(artifact.downloadUrl);
