@@ -11,7 +11,7 @@
  *               version if no stable tags exist yet)
  *   - beta    → bump `-beta.N` for the current X.Y.Z; if X.Y.Z is already
  *               promoted to stable, advance to `X.(Y+1).0-beta.1`
- *   - nightly → `<base>-nightly.<short-sha>` (deterministic per commit)
+ *   - nightly → `nightly-YYYYMMDD` (date code, one build per day)
  *
  * Usage:
  *   node scripts/next-version.cjs stable
@@ -129,20 +129,14 @@ function nextBeta(tags, baseVer) {
   return `${currentBase}-beta.${maxN + 1}`;
 }
 
-function nextNightly(baseVer) {
-  const sha = shortSha();
-  // Use the highest version across ALL tags (stable, beta, nightly)
-  // as the base, so nightly is always at least as new as the latest
-  // release on any channel.
-  const tags = gitTags();
-  const allBases = tags
-    .map(parseTag)
-    .filter(Boolean)
-    .map((t) => t.base);
-  const highestBase = allBases.length > 0 ? highest(allBases) : baseVer;
-  // Also compare with package.json version — use whichever is higher.
-  const effective = compareBase(highestBase, baseVer) >= 0 ? highestBase : baseVer;
-  return `${effective}-nightly.${sha}`;
+function nextNightly() {
+  // Nightly uses a simple date code: nightly-YYYYMMDD
+  // One build per day — the date is deterministic for any commit on that day.
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `nightly-${y}${m}${d}`;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────
@@ -153,7 +147,7 @@ try {
   if (override) {
     // Strip leading `v` if present; trust the caller otherwise.
     result = override.replace(/^v/, '').trim();
-    if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(result)) {
+    if (!/^[\w.-]+$/.test(result)) {
       console.error(`Invalid version override: ${override}`);
       process.exit(1);
     }
@@ -162,7 +156,7 @@ try {
   } else if (channel === 'beta') {
     result = nextBeta(gitTags(), baseVer);
   } else if (channel === 'nightly') {
-    result = nextNightly(baseVer);
+    result = nextNightly();
   } else {
     console.error(`Unknown channel: ${channel} (expected: stable | beta | nightly)`);
     process.exit(1);

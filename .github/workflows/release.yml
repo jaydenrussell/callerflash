@@ -396,7 +396,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.route.outputs.version }}
-          name: "CallerFlash — v${{ needs.route.outputs.version }} (${{ needs.route.outputs.channel }})"
+          name: >-
+            ${{ needs.route.outputs.channel == 'nightly' && format('CallerFlash Nightly {0}', needs.route.outputs.version) || needs.route.outputs.channel == 'beta' && format('CallerFlash v{0} beta', needs.route.outputs.version) || format('CallerFlash v{0}', needs.route.outputs.version) }}
           body_path: release-notes.md
           prerelease: ${{ needs.route.outputs.prerelease }}
           draft: false

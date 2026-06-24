@@ -54,30 +54,42 @@ function parseChangelog(body: string, max = 6): string[] {
 }
 
 /**
- * Compare two semver strings. Returns 1 if a > b, -1 if a < b, 0 if equal.
- * Handles prerelease suffixes like "1.5.0-beta.3" or "1.4.2-nightly.abc1234".
- * A version with a prerelease suffix is considered HIGHER than the same base
- * version without one (e.g. 1.5.0-nightly.xxx > 1.5.0).
+ * Compare two version strings. Returns 1 if a > b, -1 if a < b, 0 if equal.
+ * Handles:
+ *   - Semver: 1.5.0, 1.4.2
+ *   - Beta prerelease: 1.5.0-beta.28
+ *   - Nightly date codes: nightly-20260624
+ * Nightly versions are always considered NEWER than any semver version.
+ * Between two nightlies, the later date wins.
  */
 function compareVersions(a: string, b: string): number {
-  const parseA = a.replace(/^v/, '').split(/-(.+)/);
-  const parseB = b.replace(/^v/, '').split(/-(.+)/);
+  const va = a.replace(/^v/, '');
+  const vb = b.replace(/^v/, '');
+
+  // Handle nightly date codes.
+  const nightlyA = va.match(/^nightly-(\d{8})$/);
+  const nightlyB = vb.match(/^nightly-(\d{8})$/);
+  if (nightlyA && nightlyB) return parseInt(nightlyA[1]) - parseInt(nightlyB[1]);
+  if (nightlyA) return 1;  // nightly is always newer than semver
+  if (nightlyB) return -1;
+
+  // Semver comparison with prerelease support.
+  const parseA = va.split(/-(.+)/);
+  const parseB = vb.split(/-(.+)/);
   const baseA = parseA[0].split('.').map(Number);
   const baseB = parseB[0].split('.').map(Number);
-  // Compare base versions first (X.Y.Z).
   for (let i = 0; i < Math.max(baseA.length, baseB.length); i++) {
     const na = baseA[i] ?? 0;
     const nb = baseB[i] ?? 0;
     if (na > nb) return 1;
     if (na < nb) return -1;
   }
-  // Same base — a prerelease suffix makes it higher (1.5.0-beta > 1.5.0).
   const preA = parseA[1] || '';
   const preB = parseB[1] || '';
-  if (preA && !preB) return 1;  // a has prerelease, b doesn't → a is newer
-  if (!preA && preB) return -1; // b has prerelease, a doesn't → b is newer
+  if (preA && !preB) return 1;
+  if (!preA && preB) return -1;
   if (preA === preB) return 0;
-  return preA > preB ? 1 : -1; // lexicographic comparison of prerelease
+  return preA > preB ? 1 : -1;
 }
 
 function formatReleaseDate(iso: string): string {
@@ -90,8 +102,10 @@ function formatReleaseDate(iso: string): string {
 
 /**
  * Returns true if a GitHub release matches the given channel.
- * Tags follow the convention `<version>[-<channel>.<sha|seq>]` set by
- * the release workflow (e.g. v1.5.0 / v1.5.0-beta.3 / v1.5.0-nightly.abc1234).
+ * Tag conventions:
+ *   stable  → v1.5.0 (no prerelease suffix)
+ *   beta    → v1.5.0-beta.28
+ *   nightly → vnightly-20260624 (date code)
  */
 function matchesChannel(
   release: GithubRelease,
@@ -100,7 +114,7 @@ function matchesChannel(
   if (channel === 'stable') return !release.prerelease;
   const tag = release.tag_name;
   if (channel === 'beta') return /-beta(\.|$)/.test(tag);
-  if (channel === 'nightly') return /-nightly(\.|$)/.test(tag);
+  if (channel === 'nightly') return /^v?nightly-\d{8}$/i.test(tag);
   return false;
 }
 
