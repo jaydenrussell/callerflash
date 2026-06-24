@@ -158,29 +158,41 @@ jobs:
           CHANNEL="${{ needs.route.outputs.channel }}"
 
           if [[ "$CHANNEL" == "nightly" ]]; then
-            # Nightly: version is the datestamp (nightly-20260624).
-            # Write directly to package.json — not valid semver for npm version.
+            # Nightly: use valid semver (0.0.0-nightly.20260624) for electron-builder,
+            # but set artifactName to strip the 0.0.0- prefix from the filename.
+            SEMVER="0.0.0-${VERSION}"
+            ARTIFACT="CallerFlash-${VERSION}.\${ext}"
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              pkg.version = '${SEMVER}';
+              pkg.build.artifactName = '${ARTIFACT}';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+          elif [[ "$CHANNEL" == "beta" ]]; then
+            # Beta: version 1.5.0-beta.28 is valid semver.
+            # artifactName: CallerFlash-1.5.0-beta.28.exe
+            ARTIFACT="CallerFlash-${VERSION}.\${ext}"
             node -e "
               const fs = require('fs');
               const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
               pkg.version = '${VERSION}';
-              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-            "
-          elif [[ "$CHANNEL" == "beta" ]]; then
-            # Beta: set version to beta-1.5.0-beta.28 so the artifact
-            # filename becomes CallerFlash-beta-1.5.0-beta.28.exe
-            node -e "
-              const fs = require('fs');
-              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
-              pkg.version = 'beta-${VERSION}';
+              pkg.build.artifactName = '${ARTIFACT}';
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
             "
           else
-            # Stable: valid semver, use npm version. Filename will be
-            # CallerFlash-1.5.0.exe (no channel prefix).
-            npm version "$VERSION" --no-git-tag-version --allow-same-version
+            # Stable: valid semver, standard naming.
+            ARTIFACT="CallerFlash-${VERSION}.\${ext}"
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              pkg.version = '${VERSION}';
+              pkg.build.artifactName = '${ARTIFACT}';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
           fi
           echo "BUILD_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "RELEASE_CHANNEL=${CHANNEL}" >> $GITHUB_ENV
 
       - name: Install dependencies
         shell: bash
@@ -196,14 +208,9 @@ jobs:
       - name: Package Electron App
         shell: bash
         env:
-          # electron-builder reads CSC_LINK / CSC_KEY_PASSWORD from env.
-          # On Ubuntu these are unset (no Authenticode on Linux); the
-          # build still produces AppImage + .deb cleanly.
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
-          # electron-builder auto-detects the runner OS. Windows runners
-          # get NSIS (.exe), Linux runners get AppImage + .deb.
           npx electron-builder --publish never
 
       - name: Generate update manifest (latest.yml)
