@@ -10,6 +10,9 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, safeStorage, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
+const http = require('http');
+const { spawn } = require('child_process');
 
 // ── Single-instance lock ───────────────────────────────────────────────
 // If a second copy is launched (double-click on the .exe again, etc.),
@@ -412,12 +415,105 @@ ipcMain.handle('safe-storage:decrypt', async (_event, base64Cipher) => {
   }
 });
 
-// ── IPC: updater channels (placeholder) ────────────────────────────────
-// The preload bridge exposes these so the renderer can call them without
-// crashing; the real auto-update logic ships in a separate change set.
+// ── IPC: updater channels ────────────────────────────────────────────
 ipcMain.handle('updater:check', async () => ({ status: 'noop' }));
 ipcMain.handle('updater:download', async () => ({ status: 'noop' }));
-ipcMain.on('updater:install', () => { /* handled by separate feature */ });
+
+/**
+ * One-click update: download the installer from the given URL and run it.
+ * The installer is saved to the OS temp directory, executed, and the app
+ * quits so the installer can replace the running binary.
+ */
+ipcMain.on('updater:install', async (_event, downloadUrl) => {
+  // Validate the URL — only allow HTTPS from GitHub's CDN.
+  if (typeof downloadUrl !== 'string' || !downloadUrl.startsWith('https://')) {
+    console.error('[updater] Refusing non-HTTPS download URL:', downloadUrl);
+    return;
+  }
+  const allowedHosts = ['objects.githubusercontent.com', 'github.com', 'releases.githubusercontent.com'];
+  let parsed;
+  try { parsed = new URL(downloadUrl); } catch { return; }
+  if (!allowedHosts.includes(parsed.hostname)) {
+    console.error('[updater] Refusing download from non-allowed host:', parsed.hostname);
+    return;
+  }
+
+  const fileName = parsed.pathname.split('/').pop() || 'CallerFlash-Update.exe';
+  const tmpDir = app.getPath('temp');
+  const filePath = path.join(tmpDir, `callerflash-update-${Date.now()}-${fileName}`);
+
+  // Notify the renderer that download + install is starting.
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('updater:status', { status: 'downloading', message: 'Downloading update…' });
+  }
+
+  const download = (url) => new Promise((resolve, reject) => {
+    const mod = url.startsWith('https') ? https : http;
+    const request = mod.get(url, { headers: { 'User-Agent': 'CallerFlash-Updater' } }, (response) => {
+      // Follow redirects (GitHub CDN uses 302).
+      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        download(response.headers.location).then(resolve).catch(reject);
+        return;
+      }
+      if (response.statusCode !== 200) {
+        reject(new Error(`HTTP ${response.statusCode}`));
+        return;
+      }
+      const totalBytes = parseInt(response.headers['content-length'] || '0', 10);
+      let received = 0;
+      const fileStream = fs.createWriteStream(filePath);
+      response.on('data', (chunk) => {
+        received += chunk.length;
+        if (totalBytes > 0 && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('updater:status', {
+            status: 'downloading',
+            progress: Math.round((received / totalBytes) * 100),
+          });
+        }
+      });
+      response.pipe(fileStream);
+      fileStream.on('finish', () => {
+        fileStream.close();
+        resolve(filePath);
+      });
+      fileStream.on('error', (err) => {
+        fs.unlink(filePath, () => {});
+        reject(err);
+      });
+    });
+    request.on('error', reject);
+    request.setTimeout(300_000, () => { request.destroy(); reject(new Error('Download timeout')); });
+  });
+
+  try {
+    const savedPath = await download(downloadUrl);
+    console.log('[updater] Downloaded to:', savedPath);
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('updater:status', { status: 'installing', message: 'Launching installer…' });
+    }
+
+    // Launch the installer and quit the app so the installer can replace files.
+    const child = spawn(savedPath, [], {
+      detached: true,
+      stdio: 'ignore',
+      shell: true,
+    });
+    child.unref();
+
+    // Give the installer a moment to start, then quit.
+    setTimeout(() => {
+      isQuitting = true;
+      app.quit();
+    }, 500);
+  } catch (err) {
+    console.error('[updater] Install failed:', err.message);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('updater:status', { status: 'error', message: err.message });
+    }
+  }
+});
+
 ipcMain.on('updater:set-channel', () => { /* handled by separate feature */ });
 
 // ── IPC: tray status sync ──────────────────────────────────────────────
