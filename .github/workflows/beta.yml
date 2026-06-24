@@ -1,0 +1,25 @@
+name: Release — Beta
+
+# Triggered by:
+#   • push to the `beta` branch
+#   • manual dispatch
+#
+# Build context: the `beta` branch HEAD.
+# Promote from nightly by merging nightly → beta (PR or fast-forward).
+# Promote to stable by merging beta → stable.
+
+on:
+  push:
+    branches:
+      - beta
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: ./.github/workflows/release.yml
+    with:
+      channel: beta
+    secrets: inherit

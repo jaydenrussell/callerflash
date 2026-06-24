@@ -1,0 +1,28 @@
+name: Release — Nightly
+
+# Triggered by:
+#   • push to the `nightly` branch
+#   • daily schedule (03:00 UTC)
+#   • manual dispatch
+#
+# Build context: the `nightly` branch HEAD.
+# Promote to beta by opening a PR: nightly → beta (or fast-forward merge).
+# Merge into `beta` triggers beta.yml.
+
+on:
+  push:
+    branches:
+      - nightly
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: ./.github/workflows/release.yml
+    with:
+      channel: nightly
+    secrets: inherit

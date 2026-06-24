@@ -1,0 +1,24 @@
+name: Release — Stable
+
+# Triggered by:
+#   • push to the `stable` branch
+#   • manual dispatch
+#
+# Build context: the `stable` branch HEAD.
+# Promote from beta by merging beta → stable (PR or fast-forward).
+
+on:
+  push:
+    branches:
+      - stable
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: ./.github/workflows/release.yml
+    with:
+      channel: stable
+    secrets: inherit
