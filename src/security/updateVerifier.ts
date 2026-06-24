@@ -32,7 +32,7 @@
 // Generated once and pinned here. Rotate ONLY by shipping a new app
 // version that contains the new key — never fetch the key from network.
 export const RELEASE_SIGNING_PUBLIC_KEY_B64 =
-  'PLACEHOLDER_REPLACE_WITH_REAL_ED25519_PUBLIC_KEY_BASE64';
+  '/JxOdXdU5qZLF7xHZDLD/fnXJV814KqTB3DVx7WWiKg=';
 
 // Allow-listed GitHub owner/repo. Hard-coded so a compromised
 // settings/config cannot redirect updates to an attacker repo.
