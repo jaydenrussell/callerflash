@@ -123,29 +123,43 @@ npm version 1.5.0 -m "Release v%s"
 git push origin main --tags
 ```
 
-The `release-stable.yml` workflow fires and creates a GitHub Release at
-`v1.5.0` with:
+The `promote-stable.yml` workflow fires (or run it manually from the
+Actions tab → "Promote → Stable" → "Run workflow"). It creates a GitHub
+Release at `v1.5.0` with:
 - `CallerFlash-Setup-1.5.0-x64.exe` (Authenticode-signed)
 - `SHA256SUMS` (sha256 of the .exe)
 - `CallerFlash-Setup-1.5.0-x64.exe.sig` (Ed25519 detached signature)
 - `latest.yml` (electron-updater auto-update manifest)
+- `beta.yml`, `nightly.yml` are NOT attached for stable; they are
+  generated and attached for their respective channels.
+
+The version is auto-incremented by `scripts/next-version.cjs` (patch
+bump from the latest `vX.Y.Z` tag) unless you override it via the
+workflow's `version_override` input.
 
 ### Beta Release
 
-```bash
-npm version 1.5.0-beta.1 -m "Release v%s"
-git push origin main --tags
-```
+Run from the Actions tab: **"Promote → Beta" → "Run workflow"**. The
+`promote-beta.yml` workflow calls the reusable `release.yml` engine with
+`channel=beta`.
+
+The version is auto-incremented by `scripts/next-version.cjs` — it bumps
+`-beta.N` for the current X.Y.Z, or advances to the next minor
+(`X.(Y+1).0-beta.1`) if X.Y.Z is already on stable. Override via the
+workflow's `version_override` input.
 
 Published as a GitHub **pre-release**. Only users who opt into the
-"beta" channel in CallerFlash receive it.
+"beta" channel in CallerFlash receive it. Assets: signed `.exe`,
+`SHA256SUMS`, `*.sig`, and `beta.yml` (electron-updater manifest).
 
 ### Nightly Release
 
-Runs automatically at 03:00 UTC every night via `release-nightly.yml`.
-Skips if `main` has no new commits since the last nightly tag.
+Runs automatically at 03:00 UTC every night via `release-nightly.yml`,
+and also fires on every push to `main` or `nightly` (per SETUP.md's
+auto-sync). Calls the reusable `release.yml` engine with
+`channel=nightly`.
 
-Nightlies are tagged `v1.5.0-nightly.20250615`, published as
+Nightlies are tagged `v<X.Y.Z>-nightly.<short-sha>`, published as
 pre-releases, and auto-cleaned (only the last 7 are kept).
 
 To trigger a nightly manually:
@@ -216,9 +230,10 @@ gh workflow run "Release — Nightly"
 callerflash-sip-client/
 ├── .github/workflows/
 │   ├── ci.yml                  # Lint + build on every PR
-│   ├── release-stable.yml      # Stable channel (tag: v1.5.0)
-│   ├── release-beta.yml        # Beta channel   (tag: v1.5.0-beta.1)
-│   └── release-nightly.yml     # Nightly channel (cron + manual)
+│   ├── release.yml             # Reusable engine (workflow_call) — build + sign + publish
+│   ├── release-nightly.yml     # Nightly (cron + push-to-main/nightly) → release.yml
+│   ├── promote-beta.yml        # Beta (manual dispatch) → release.yml
+│   └── promote-stable.yml      # Stable (manual dispatch) → release.yml
 ├── build/
 │   ├── icon.ico                # App icon (256x256 minimum)
 │   ├── icon.png                # Tray icon
@@ -227,7 +242,8 @@ callerflash-sip-client/
 │   ├── main.cjs                # Electron main process (hardened)
 │   └── preload.cjs             # Context-bridged IPC
 ├── scripts/
-│   └── generate-signing-keys.sh
+│   ├── generate-signing-keys.sh  # Ed25519 keypair generator
+│   └── next-version.cjs         # Auto-increment version resolver
 ├── src/                        # React + Tailwind renderer
 │   ├── security/
 │   │   ├── updateVerifier.ts   # Ed25519 / SHA-256 / policy checks
