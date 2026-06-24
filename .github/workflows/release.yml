@@ -336,50 +336,13 @@ jobs:
           VERSION: ${{ needs.route.outputs.version }}
           CHANNEL: ${{ needs.route.outputs.channel }}
         run: |
-          cat > release-notes.md <<EOF
-          ### CallerFlash v${VERSION} — \`${CHANNEL}\` channel
-
-          **Channel:** \`${CHANNEL}\`
-          **Pre-release:** ${{ needs.route.outputs.prerelease }}
-          **Download:** pick the \`.exe\` asset below.
-
-          ---
-
-          ## 🔐 Security Verification — all three layers required
-
-          Every release is signed using **three independent layers**. The
-          in-app auto-updater (see \`SECURITY.md\`) refuses to install any
-          update where any layer fails.
-
-          ### 1. Authenticode Code Signing
-          The \`.exe\` is signed with a Windows publisher certificate.
-          SmartScreen checks this signature at install time.
-
-          ### 2. SHA-256 Checksum
-          A \`SHA256SUMS\` file is attached to this release. Verify with:
-
-          \`\`\`sh
-          sha256sum -c SHA256SUMS --ignore-missing
-          \`\`\`
-
-          ### 3. Ed25519 Detached Signature
-          \`SHA256SUMS\` is signed with an offline Ed25519 key. The matching
-          public key is **pinned in the app binary** (\`RELEASE_SIGNING_PUBLIC_KEY_B64\`
-          in \`src/security/updateVerifier.ts\`). Verify with:
-
-          \`\`\`sh
-          openssl pkeyutl -verify -rawin -pubin \\
-              -inkey <(echo \$CALLERFLASH_RELEASE_PUB | base64 -d) \\
-              -in SHA256SUMS \\
-              -sigfile CallerFlash-Setup-${VERSION}.exe.sig
-          \`\`\`
-
-          ---
-
-          ## Update Manifest
-          \`latest.yml\` (stable) / \`beta.yml\` / \`nightly.yml\` is the
-          electron-updater manifest for the \`${CHANNEL}\` channel.
-          EOF
+          # Auto-generate a Conventional-Changelog-style notes file from
+          # the commits since the previous tag of this channel. What the
+          # user sees in the GitHub Release body is what actually changed
+          # -- no more hardcoded boilerplate.
+          node scripts/generate-release-notes.cjs "$CHANNEL" "$VERSION" release-notes.md
+          echo "--- generated release-notes.md ---"
+          cat release-notes.md
 
       - name: Create tag + GitHub Release
         uses: softprops/action-gh-release@v2
