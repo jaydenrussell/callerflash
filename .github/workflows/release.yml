@@ -155,11 +155,19 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ needs.route.outputs.version }}"
-          # npm version requires valid semver. Nightly uses a date code
-          # (nightly-YYYYMMDD) which isn't semver — skip the bump for
-          # nightlies and just inject the version at build time.
           if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            # Stable/beta: valid semver, use npm version
             npm version "$VERSION" --no-git-tag-version --allow-same-version
+          else
+            # Nightly: not valid semver. Write the datestamp directly
+            # to package.json so electron-builder uses it as the version
+            # in the output filename (CallerFlash-nightly-20260624.exe).
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              pkg.version = '${VERSION}';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
           fi
           echo "BUILD_VERSION=${VERSION}" >> $GITHUB_ENV
 
