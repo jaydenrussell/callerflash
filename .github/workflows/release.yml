@@ -235,12 +235,16 @@ jobs:
       - name: Generate channel-specific update manifest
         shell: bash
         run: |
+          # Earlier steps in this job (`Generate SHA256SUMS`,
+          # `Sign SHA256SUMS with Ed25519`) end with `cd release`, and
+          # GitHub Actions preserves cwd across steps within a job.
+          # Snap back to the workspace root before invoking our script.
+          cd "$GITHUB_WORKSPACE"
           CHANNEL="${{ needs.route.outputs.channel }}"
           VERSION="${{ needs.route.outputs.version }}"
           # electron-updater reads `latest.yml` for stable. For beta/nightly,
           # generate a parallel manifest from the same build artifacts with
-          # the appropriate `channel` field. The script takes the release
-          # directory as its first arg, so we don't need to cd into it.
+          # the appropriate `channel` field.
           case "$CHANNEL" in
             beta)
               node scripts/generate-latest-yml.cjs release "$VERSION" beta.yml beta
@@ -252,6 +256,8 @@ jobs:
               echo "Stable channel: latest.yml already generated in build job"
               ;;
           esac
+          echo "--- release/ contents ---"
+          ls -la release/
 
       - name: Stage signed artifacts
         uses: actions/upload-artifact@v5
