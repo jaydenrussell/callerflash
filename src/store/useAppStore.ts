@@ -79,6 +79,10 @@ interface PersistedUiSettings {
   toastDragPosition?: { x: number; y: number } | null;
   updateCheckFrequency?: 'off' | 'daily' | 'weekly' | 'monthly';
   lastCheckedAt?: string; // ISO date — Date isn't serializable through JSON
+  updateChannel?: 'stable' | 'beta' | 'nightly';
+  autoUpdate?: boolean;
+  toastConfig?: Partial<ToastConfig>;
+  releasePageUrl?: string;
 }
 
 function loadPersistedUiSettings(): PersistedUiSettings {
@@ -157,6 +161,21 @@ const defaultSipConfig: SipConfig = {
   registerExpiry: 300,
 };
 
+const defaultAppPreferences: AppPreferences = {
+  startWithWindows: false,
+  startMinimized: false,
+  ...persistedUi.appPreferences,
+};
+
+// __APP_VERSION__ and __APP_REPO__ are injected by Vite at build time
+// from package.json (see vite.config.ts). Using the live values means
+// Sidebar / About / AutoUpdate header always show the actual running
+// version, not a stale string. Persisted UI choices hydrate from
+// localStorage so channel, autoUpdate, frequency, and the last-check
+// timestamp all survive restarts.
+
+// Hydrate toastConfig from localStorage so font/colors/position
+// chosen by the user are restored after an app restart or update.
 const defaultToastConfig: ToastConfig = {
   fontSize: 16,
   fontFamily: 'Inter',
@@ -172,29 +191,20 @@ const defaultToastConfig: ToastConfig = {
   maxWidth: 420,
   borderRadius: 12,
   opacity: 95,
+  ...(persistedUi.toastConfig ?? {}),
 };
 
-const defaultAppPreferences: AppPreferences = {
-  startWithWindows: false,
-  startMinimized: false,
-  ...persistedUi.appPreferences,
-};
-
-// __APP_VERSION__ and __APP_REPO__ are injected by Vite at build time
-// from package.json (see vite.config.ts). Using the live values means
-// Sidebar / About / AutoUpdate header always show the actual running
-// version, not a stale string.
 const defaultUpdateInfo: UpdateInfo = {
   currentVersion: __APP_VERSION__,
   latestVersion: __APP_VERSION__,
   updateAvailable: false,
   lastChecked: persistedUi.lastCheckedAt ? new Date(persistedUi.lastCheckedAt) : null,
-  autoUpdate: true,
-  updateChannel: 'stable',
+  autoUpdate: persistedUi.autoUpdate ?? true,
+  updateChannel: persistedUi.updateChannel ?? 'stable',
   updateCheckFrequency: persistedUi.updateCheckFrequency ?? 'daily',
   githubRepo: __APP_REPO__,
   releaseNotes: '',
-  releasePageUrl: '',
+  releasePageUrl: persistedUi.releasePageUrl ?? '',
   downloadProgress: 0,
   isDownloading: false,
   isInstalling: false,
@@ -212,7 +222,17 @@ export const useAppStore = create<AppState>((set) => ({
   setSipRegistered: (registered) => set({ sipRegistered: registered }),
 
   toastConfig: defaultToastConfig,
-  setToastConfig: (config) => set((s) => ({ toastConfig: { ...s.toastConfig, ...config } })),
+  setToastConfig: (config) => set((s) => {
+    const next = { ...s.toastConfig, ...config };
+    // Persist so visual customizations survive restarts/updates.
+    savePersistedUiSettings({
+      ...loadPersistedUiSettings(),
+      toastConfig: next,
+      appPreferences: s.appPreferences,
+      toastDragPosition: s.toastDragPosition,
+    });
+    return { toastConfig: next };
+  }),
 
   appPreferences: defaultAppPreferences,
   setAppPreferences: (prefs) => set((s) => {
@@ -258,14 +278,19 @@ export const useAppStore = create<AppState>((set) => ({
   updateInfo: defaultUpdateInfo,
   setUpdateInfo: (info) => set((s) => {
     const next = { ...s.updateInfo, ...info };
-    // Persist the fields that drive scheduling across restarts so
-    // the "daily / weekly / monthly" cadence survives an app exit.
+    // Persist every user-configurable field so settings survive
+    // app restarts AND in-app updates. Transient fields (download
+    // progress, install state, releaseNotes text) are intentionally
+    // not persisted — they're rebuilt on each session.
     savePersistedUiSettings({
       ...loadPersistedUiSettings(),
       appPreferences: s.appPreferences,
       toastDragPosition: s.toastDragPosition,
+      updateChannel: next.updateChannel,
+      autoUpdate: next.autoUpdate,
       updateCheckFrequency: next.updateCheckFrequency,
       lastCheckedAt: next.lastChecked ? next.lastChecked.toISOString() : undefined,
+      releasePageUrl: next.releasePageUrl || undefined,
     });
     return { updateInfo: next };
   }),

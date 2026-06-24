@@ -586,9 +586,11 @@ export function AutoUpdate() {
         </div>
       )}
 
-      {/* Settings + Security side by side — auto-height, release history grows */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 flex-1 min-h-0">
-        <div className="bg-win-surface rounded-xl border border-win-border p-3 flex-shrink-0 overflow-y-auto">
+      {/* Settings + Security side by side, release history at the bottom.
+          No internal scrollbars on Settings/Security — all content fits
+          its natural height. Only the Release History list scrolls. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="bg-win-surface rounded-xl border border-win-border p-3">
           <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
             <Shield className="w-4 h-4 text-win-accent" />
             Settings
@@ -675,7 +677,7 @@ export function AutoUpdate() {
           </div>
         </div>
 
-        <div className="bg-win-surface rounded-xl border border-win-border p-3 flex-shrink-0 overflow-y-auto">
+        <div className="bg-win-surface rounded-xl border border-win-border p-3">
           <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-win-success" />
             Security

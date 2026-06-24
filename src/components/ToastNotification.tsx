@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Phone, X, User } from 'lucide-react';
 import { useAppStore, type CallRecord } from '../store/useAppStore';
 import { sanitizeCallerNumberForClipboard } from '../security/secretRedactor';
@@ -189,17 +190,24 @@ export function ToastNotification({ call, onDismiss, stackIndex }: ToastNotifica
     };
   };
 
-  return (
+  // Portal the toast directly to document.body so it cannot be clipped
+  // or stacking-context-trapped by any parent (the App shell uses
+  // `overflow-hidden` and several flex layers that previously could
+  // swallow the toast). z-index is set inline with !important to
+  // beat any third-party styles.
+  return createPortal(
     <div
       ref={dragRef}
       onMouseDown={handleMouseDown}
-      className={`z-50 ${isExiting ? 'animate-slide-out' : 'animate-slide-in'} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      className={`${isExiting ? 'animate-slide-out' : 'animate-slide-in'} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
       style={{
         ...getPositionStyle(),
+        zIndex: 2147483647, // max safe int; sits above anything in the app
         maxWidth: `min(${toastConfig.maxWidth}px, calc(100vw - 24px))`,
         width: `min(${toastConfig.maxWidth}px, calc(100vw - 24px))`,
         userSelect: 'none',
         transition: isDragging ? 'none' : undefined,
+        pointerEvents: 'auto',
       }}
     >
       <div
@@ -336,7 +344,8 @@ export function ToastNotification({ call, onDismiss, stackIndex }: ToastNotifica
           />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
