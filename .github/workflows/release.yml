@@ -150,6 +150,16 @@ jobs:
         run: |
           npx electron-builder --win --x64 --publish never
 
+      - name: Generate update manifest (latest.yml)
+        shell: bash
+        run: |
+          # Generate latest.yml deterministically from the actual build
+          # artifacts. electron-builder's auto-generated metadata is
+          # unreliable across versions and is suppressed when publish:null.
+          VERSION="${{ needs.route.outputs.version }}"
+          node scripts/generate-latest-yml.cjs release "$VERSION" latest.yml latest
+          ls -la release/
+
       - name: Stage build artifacts
         uses: actions/upload-artifact@v5
         with:
