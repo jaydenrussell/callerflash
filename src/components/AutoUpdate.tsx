@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Download, RefreshCw,
   Shield, GitBranch,
   ExternalLink, GitCommit, ChevronDown,
-  Check, X as XIcon, ShieldCheck, FileLock, Key, Bell
+  Check, X as XIcon, ShieldCheck, FileLock, Key, Bell, AlertCircle
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -55,34 +55,60 @@ function parseChangelog(body: string, max = 6): string[] {
 
 function formatReleaseDate(iso: string): string {
   const d = new Date(iso);
-  // YYYY-MM-DD — compact, no time, locale-independent
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Returns true if a GitHub release matches the given channel.
+ * Tags follow the convention `<version>[-<channel>.<sha|seq>]` set by
+ * the release workflow (e.g. v1.5.0 / v1.5.0-beta.3 / v1.5.0-nightly.abc1234).
+ */
+function matchesChannel(
+  release: GithubRelease,
+  channel: 'stable' | 'beta' | 'nightly'
+): boolean {
+  if (channel === 'stable') return !release.prerelease;
+  const tag = release.tag_name;
+  if (channel === 'beta') return /-beta(\.|$)/.test(tag);
+  if (channel === 'nightly') return /-nightly(\.|$)/.test(tag);
+  return false;
+}
+
 type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'ready' | 'installing';
+type CheckOutcome =
+  | { kind: 'no-update'; message: string }
+  | { kind: 'missing-assets'; message: string; release: GithubRelease }
+  | { kind: 'verification-failed'; message: string; release: GithubRelease }
+  | null;
 
 export function AutoUpdate() {
   const { updateInfo, setUpdateInfo, addDiagnosticLog } = useAppStore();
   const [verification, setVerification] = useState<VerificationResult | null>(null);
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
-  // Real releases fetched from GitHub — backs the Release History list.
+  // Full unfiltered release list, fetched from GitHub.
   const [releases, setReleases] = useState<GithubRelease[]>([]);
-  // Local phase tracker. `idle` means no check has run this session;
-  // `ready` means a verified update is downloaded and waiting for the
-  // user to click "Restart to Install".
   const [phase, setPhase] = useState<UpdatePhase>('idle');
+  // Captures the failure reason so the user sees WHY nothing happened,
+  // not just a silent diagnostic log. Cleared on every new check.
+  const [outcome, setOutcome] = useState<CheckOutcome>(null);
 
-  // Load the release list as soon as the user opens this tab — the
-  // history panel has real value even without an update being available.
+  // The displayed list — strictly filtered by the active channel.
+  const channelReleases = useMemo(
+    () => releases.filter((r) => matchesChannel(r, updateInfo.updateChannel)),
+    [releases, updateInfo.updateChannel]
+  );
+
+  // Refetch on mount and whenever the channel toggles — each channel
+  // has its own release set.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const repoPath = updateInfo.githubRepo.replace(/^https?:\/\/github\.com\//, '');
-        const apiUrl = `https://api.github.com/repos/${repoPath}/releases?per_page=10`;
+        const apiUrl = `https://api.github.com/repos/${repoPath}/releases?per_page=20`;
         const response = await fetch(apiUrl, {
           headers: { Accept: 'application/vnd.github+json' },
         });
@@ -96,7 +122,7 @@ export function AutoUpdate() {
     return () => {
       cancelled = true;
     };
-  }, [updateInfo.githubRepo]);
+  }, [updateInfo.githubRepo, updateInfo.updateChannel]);
 
   /**
    * One-click flow: fetch metadata, run the verification pipeline, and
@@ -107,6 +133,7 @@ export function AutoUpdate() {
   const handleCheckAndDownload = async () => {
     setPhase('checking');
     setVerification(null);
+    setOutcome(null);
     addDiagnosticLog({
       level: 'info',
       category: 'UPDATE',
@@ -117,7 +144,7 @@ export function AutoUpdate() {
     try {
       // 1. Fetch latest matching release from GitHub.
       const repoPath = updateInfo.githubRepo.replace(/^https?:\/\/github\.com\//, '');
-      const apiUrl = `https://api.github.com/repos/${repoPath}/releases?per_page=10`;
+      const apiUrl = `https://api.github.com/repos/${repoPath}/releases?per_page=20`;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10_000);
@@ -134,38 +161,36 @@ export function AutoUpdate() {
         clearTimeout(timeoutId);
       }
 
-      // Cache the full list for the Release History panel.
       setReleases(fetched);
 
-      // 2. Pick the most recent release matching the channel.
-      const candidate = fetched.find((r) =>
-        updateInfo.updateChannel === 'stable' ? !r.prerelease : true
-      );
+      // 2. Pick the most recent release matching the active channel.
+      const channel = updateInfo.updateChannel;
+      const candidate = fetched.find((r) => matchesChannel(r, channel));
 
       if (!candidate) {
-        addDiagnosticLog({ level: 'success', category: 'UPDATE', message: 'No releases found for this channel.' });
+        const msg = `No releases on the ${channel} channel yet.`;
+        addDiagnosticLog({ level: 'info', category: 'UPDATE', message: msg });
         setUpdateInfo({
           updateAvailable: false,
           lastChecked: new Date(),
           latestVersion: updateInfo.currentVersion,
         });
         setPhase('idle');
+        setOutcome({ kind: 'no-update', message: msg });
         return;
       }
+
+      // Track the release page for the "Open on GitHub" fallback button.
+      setUpdateInfo({ releasePageUrl: candidate.html_url });
 
       const artifact = await parseGithubRelease(candidate);
       if (!artifact) {
-        addDiagnosticLog({
-          level: 'warning',
-          category: 'UPDATE',
-          message: `Release ${candidate.tag_name} is missing required assets (binary, SHA256SUMS, .sig) or the assets could not be fetched`,
-        });
+        const msg = `Release ${candidate.tag_name} found, but it's missing the required assets (signed .exe, SHA256SUMS, .sig). Release must be published by the release workflow for in-app updates to work.`;
+        addDiagnosticLog({ level: 'warning', category: 'UPDATE', message: msg });
         setPhase('idle');
+        setOutcome({ kind: 'missing-assets', message: msg, release: candidate });
         return;
       }
-
-      // Stash the release URL so we can open it in the system browser.
-      setUpdateInfo({ releasePageUrl: candidate.html_url });
 
       // 3. Run the full verification pipeline.
       addDiagnosticLog({
@@ -173,7 +198,7 @@ export function AutoUpdate() {
         category: 'UPDATE',
         message: `Verifying release v${artifact.version} against pinned public key…`,
       });
-      const result = await verifyUpdateArtifact(artifact, updateInfo.updateChannel, updateInfo.currentVersion);
+      const result = await verifyUpdateArtifact(artifact, channel, updateInfo.currentVersion);
       setVerification(result);
       for (const step of result.steps) {
         addDiagnosticLog({
@@ -185,17 +210,15 @@ export function AutoUpdate() {
       }
 
       if (!result.approved) {
-        addDiagnosticLog({
-          level: 'error',
-          category: 'UPDATE',
-          message: `Update v${artifact.version} REJECTED by verification — refusing to install`,
-        });
+        const msg = `Update v${artifact.version} REJECTED by verification — refusing to install. See the verification panel below for the failing step.`;
+        addDiagnosticLog({ level: 'error', category: 'UPDATE', message: msg });
         setUpdateInfo({
           updateAvailable: false,
           lastChecked: new Date(),
           latestVersion: updateInfo.currentVersion,
         });
         setPhase('idle');
+        setOutcome({ kind: 'verification-failed', message: msg, release: candidate });
         return;
       }
 
@@ -285,8 +308,7 @@ export function AutoUpdate() {
     }, 1500);
   };
 
-  const openReleasePage = () => {
-    const url = updateInfo.releasePageUrl || `${updateInfo.githubRepo}/releases`;
+  const openUrl = (url: string) => {
     if (window.callerflash?.shell?.openExternal) {
       window.callerflash.shell.openExternal(url);
     } else {
@@ -294,16 +316,23 @@ export function AutoUpdate() {
     }
   };
 
+  const openReleasePage = (release?: GithubRelease) => {
+    const url = release?.html_url
+      ?? updateInfo.releasePageUrl
+      ?? `${updateInfo.githubRepo}/releases`;
+    openUrl(url);
+  };
+
   const isBusy = phase === 'checking' || phase === 'downloading' || phase === 'installing';
 
   return (
     <div className="flex flex-col h-full gap-3 animate-fade-in">
-      {/* Compact header — title left, Check + Releases right (no duplicate app header) */}
+      {/* Compact header — title left, Check + Releases right */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-win-text">Updates</h2>
           <p className="text-xs text-win-text-secondary mt-0.5">
-            v{updateInfo.currentVersion}
+            v{updateInfo.currentVersion} · <span className="capitalize">{updateInfo.updateChannel}</span> channel
             {updateInfo.updateAvailable && phase !== 'ready' && (
               <> · v{updateInfo.latestVersion} available</>
             )}
@@ -314,7 +343,7 @@ export function AutoUpdate() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={openReleasePage}
+            onClick={() => openReleasePage()}
             className="flex items-center gap-2 px-3 py-1.5 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm transition-colors border border-win-border"
             title="Open the GitHub Releases page"
           >
@@ -346,6 +375,32 @@ export function AutoUpdate() {
           )}
         </div>
       </div>
+
+      {/* Visible failure / outcome banner — surfaces what would
+          otherwise be a silent no-op when the release is missing
+          security assets or verification fails. */}
+      {outcome && outcome.kind !== 'no-update' && phase === 'idle' && (
+        <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-win-warning/10 border border-win-warning/30">
+          <AlertCircle className="w-4 h-4 text-win-warning flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-win-warning">
+              {outcome.kind === 'missing-assets'
+                ? 'Release found, but no signed assets'
+                : 'Update blocked'}
+            </p>
+            <p className="text-xs text-win-text-secondary leading-snug mt-0.5">{outcome.message}</p>
+            {'release' in outcome && outcome.release && (
+              <button
+                onClick={() => openReleasePage(outcome.release as GithubRelease)}
+                className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-win-accent hover:text-win-accent-hover transition-colors"
+              >
+                <ExternalLink className="w-3 h-3" />
+                Open {outcome.release.tag_name} on GitHub
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Ready-to-install banner */}
       {phase === 'ready' && (
@@ -457,18 +512,18 @@ export function AutoUpdate() {
           <div className="p-2.5 rounded-lg bg-win-card border border-win-border/50">
             <p className="text-[11px] font-medium text-win-text-secondary mb-1.5">Update Channel</p>
             <div className="flex gap-1.5">
-              {['stable', 'beta', 'nightly'].map((channel) => (
+              {(['stable', 'beta', 'nightly'] as const).map((channelOpt) => (
                 <button
-                  key={channel}
-                  onClick={() => setUpdateInfo({ updateChannel: channel as any })}
+                  key={channelOpt}
+                  onClick={() => setUpdateInfo({ updateChannel: channelOpt })}
                   className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    updateInfo.updateChannel === channel
+                    updateInfo.updateChannel === channelOpt
                       ? 'bg-win-accent/20 text-win-accent border border-win-accent/30'
                       : 'bg-win-surface text-win-text-secondary hover:bg-win-surface-hover border border-win-border'
                   }`}
                 >
                   <GitBranch className="w-3 h-3 mx-auto mb-0.5" />
-                  {channel.charAt(0).toUpperCase() + channel.slice(1)}
+                  {channelOpt.charAt(0).toUpperCase() + channelOpt.slice(1)}
                 </button>
               ))}
             </div>
@@ -521,27 +576,31 @@ sha256sum -c SHA256SUMS --ignore-missing`}</pre>
           </div>
         </div>
 
-        {/* Release History — fills remaining viewport height */}
+        {/* Release History — strictly filtered to the active channel */}
         <div className="bg-win-surface rounded-xl border border-win-border p-3 lg:col-span-2 flex flex-col min-h-0">
           <div className="flex items-center justify-between mb-2 flex-shrink-0">
             <h3 className="text-sm font-semibold text-win-text flex items-center gap-2">
               <GitCommit className="w-4 h-4 text-win-accent" />
-              Release History
+              {updateInfo.updateChannel.charAt(0).toUpperCase() + updateInfo.updateChannel.slice(1)} Releases
             </h3>
-            {releases.length > 0 && (
+            {channelReleases.length > 0 && (
               <span className="text-[10px] text-win-text-tertiary">
-                {releases.length} release{releases.length === 1 ? '' : 's'}
+                {channelReleases.length} release{channelReleases.length === 1 ? '' : 's'}
               </span>
             )}
           </div>
 
-          {releases.length === 0 ? (
-            <p className="text-xs text-win-text-tertiary py-3 text-center">
-              Loading…
-            </p>
+          {channelReleases.length === 0 ? (
+            <div className="text-center py-4">
+              <p className="text-xs text-win-text-tertiary">
+                {releases.length === 0
+                  ? 'Loading…'
+                  : `No ${updateInfo.updateChannel} releases found yet.`}
+              </p>
+            </div>
           ) : (
             <div className="divide-y divide-win-border/40 overflow-y-auto pr-1">
-              {releases.map((release) => {
+              {channelReleases.map((release) => {
                 const isCurrent = release.tag_name.replace(/^v/, '') === updateInfo.currentVersion;
                 const notes = parseChangelog(release.body);
                 return (
