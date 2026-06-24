@@ -112,8 +112,6 @@ function render(commits, ver, ch) {
   }
 
   const lines = [];
-  lines.push(`# CallerFlash v${ver}`);
-  lines.push('');
   lines.push(`**Channel:** \`${ch}\`  ·  **Date:** ${new Date().toISOString().slice(0, 10)}`);
   lines.push('');
 
