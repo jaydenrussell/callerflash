@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Download, RefreshCw,
   Shield, GitBranch,
@@ -74,6 +74,29 @@ export function AutoUpdate() {
   // `ready` means a verified update is downloaded and waiting for the
   // user to click "Restart to Install".
   const [phase, setPhase] = useState<UpdatePhase>('idle');
+
+  // Load the release list as soon as the user opens this tab — the
+  // history panel has real value even without an update being available.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const repoPath = updateInfo.githubRepo.replace(/^https?:\/\/github\.com\//, '');
+        const apiUrl = `https://api.github.com/repos/${repoPath}/releases?per_page=10`;
+        const response = await fetch(apiUrl, {
+          headers: { Accept: 'application/vnd.github+json' },
+        });
+        if (!response.ok) return;
+        const list: GithubRelease[] = await response.json();
+        if (!cancelled) setReleases(list);
+      } catch {
+        // Network failure — leave releases empty.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [updateInfo.githubRepo]);
 
   /**
    * One-click flow: fetch metadata, run the verification pipeline, and
@@ -274,7 +297,7 @@ export function AutoUpdate() {
   const isBusy = phase === 'checking' || phase === 'downloading' || phase === 'installing';
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="flex flex-col h-full gap-3 animate-fade-in">
       {/* Compact header — title left, Check + Releases right (no duplicate app header) */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
@@ -340,7 +363,7 @@ export function AutoUpdate() {
 
       {/* Verification Audit Panel */}
       {verification && (
-        <div className="bg-win-surface rounded-xl border border-win-border p-3">
+        <div className="bg-win-surface rounded-xl border border-win-border p-3 flex-shrink-0">
           <div className="flex items-center gap-2 mb-2">
             {verification.approved ? (
               <ShieldCheck className="w-4 h-4 text-win-success" />
@@ -371,7 +394,7 @@ export function AutoUpdate() {
 
       {/* Download Progress */}
       {(phase === 'downloading' || phase === 'installing') && (
-        <div className="bg-win-surface rounded-xl border border-win-border p-3">
+        <div className="bg-win-surface rounded-xl border border-win-border p-3 flex-shrink-0">
           <div className="flex items-center justify-between mb-1.5">
             <p className="text-xs font-medium text-win-text">
               {phase === 'installing' ? 'Installing update…' : 'Downloading update…'}
@@ -391,7 +414,7 @@ export function AutoUpdate() {
 
       {/* Release Notes (collapsed) */}
       {updateInfo.updateAvailable && updateInfo.releaseNotes && phase !== 'downloading' && phase !== 'installing' && (
-        <div className="bg-win-surface rounded-xl border border-win-border p-3">
+        <div className="bg-win-surface rounded-xl border border-win-border p-3 flex-shrink-0">
           <button
             onClick={() => setShowReleaseNotes(!showReleaseNotes)}
             className="flex items-center gap-2 text-xs font-medium text-win-text-secondary hover:text-win-text transition-colors w-full text-left"
@@ -407,9 +430,9 @@ export function AutoUpdate() {
         </div>
       )}
 
-      {/* Settings + Security side by side, tighter */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="bg-win-surface rounded-xl border border-win-border p-3">
+      {/* Settings + Security side by side — auto-height, release history grows */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 flex-1 min-h-0">
+        <div className="bg-win-surface rounded-xl border border-win-border p-3 flex-shrink-0 overflow-y-auto">
           <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
             <Shield className="w-4 h-4 text-win-accent" />
             Settings
@@ -452,7 +475,7 @@ export function AutoUpdate() {
           </div>
         </div>
 
-        <div className="bg-win-surface rounded-xl border border-win-border p-3">
+        <div className="bg-win-surface rounded-xl border border-win-border p-3 flex-shrink-0 overflow-y-auto">
           <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-win-success" />
             Security
@@ -498,9 +521,9 @@ sha256sum -c SHA256SUMS --ignore-missing`}</pre>
           </div>
         </div>
 
-        {/* Release History — real GitHub releases, rendered professionally */}
-        <div className="bg-win-surface rounded-xl border border-win-border p-3 lg:col-span-2">
-          <div className="flex items-center justify-between mb-2">
+        {/* Release History — fills remaining viewport height */}
+        <div className="bg-win-surface rounded-xl border border-win-border p-3 lg:col-span-2 flex flex-col min-h-0">
+          <div className="flex items-center justify-between mb-2 flex-shrink-0">
             <h3 className="text-sm font-semibold text-win-text flex items-center gap-2">
               <GitCommit className="w-4 h-4 text-win-accent" />
               Release History
@@ -514,13 +537,11 @@ sha256sum -c SHA256SUMS --ignore-missing`}</pre>
 
           {releases.length === 0 ? (
             <p className="text-xs text-win-text-tertiary py-3 text-center">
-              {phase === 'idle'
-                ? 'Click "Check for Updates" to load the changelog.'
-                : 'No releases found.'}
+              Loading…
             </p>
           ) : (
-            <div className="divide-y divide-win-border/40">
-              {releases.slice(0, 6).map((release) => {
+            <div className="divide-y divide-win-border/40 overflow-y-auto pr-1">
+              {releases.map((release) => {
                 const isCurrent = release.tag_name.replace(/^v/, '') === updateInfo.currentVersion;
                 const notes = parseChangelog(release.body);
                 return (

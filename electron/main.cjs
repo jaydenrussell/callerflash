@@ -96,9 +96,11 @@ function createWindow() {
 
 // ── Tray icon + menu ───────────────────────────────────────────────────
 function loadTrayIcon() {
-  // Prefer the multi-resolution .ico (16x16, 32x32 baked in).
-  // Fall back to the .png if the .ico is missing or unreadable.
+  // Tray-specific icon (transparent background, brand-color square +
+  // "CF" mark). Falls back to the main app icon if it's missing.
   const candidates = [
+    path.join(__dirname, '../build/tray-icon.ico'),
+    path.join(__dirname, '../build/tray-icon.png'),
     path.join(__dirname, '../build/icon.ico'),
     path.join(__dirname, '../build/icon.png'),
   ];

@@ -66,7 +66,7 @@ export function Dashboard() {
   const todayCalls = callHistory.filter((c) => c.timestamp.getDate() === new Date().getDate()).length;
 
   return (
-    <div className="space-y-3 animate-fade-in">
+    <div className="flex flex-col h-full gap-3 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-win-text">Dashboard</h2>
@@ -144,7 +144,7 @@ export function Dashboard() {
       </div>
 
       {/* Two-column: Connection Details + Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 flex-shrink-0">
         <div className="lg:col-span-2 bg-win-surface rounded-xl border border-win-border p-3">
           <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
             <Shield className="w-4 h-4 text-win-accent" />
@@ -219,20 +219,20 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-win-surface rounded-xl border border-win-border p-3">
-        <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
+      <div className="bg-win-surface rounded-xl border border-win-border p-3 flex-1 min-h-0 flex flex-col">
+        <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2 flex-shrink-0">
           <Clock className="w-4 h-4 text-win-accent" />
           Recent calls
         </h3>
         {callHistory.length === 0 ? (
-          <div className="text-center py-6">
+          <div className="text-center py-6 flex-1 flex flex-col items-center justify-center">
             <PhoneOff className="w-10 h-10 text-win-text-tertiary mx-auto mb-2" />
             <p className="text-xs text-win-text-secondary">No calls yet</p>
             <p className="text-[11px] text-win-text-tertiary mt-0.5">Connect to a provider and simulate a call.</p>
           </div>
         ) : (
-          <div className="space-y-0.5 max-h-56 overflow-y-auto">
-            {callHistory.slice(0, 8).map((call) => (
+          <div className="space-y-0.5 overflow-y-auto pr-1 flex-1 min-h-0">
+            {callHistory.slice(0, 50).map((call) => (
               <div
                 key={call.id}
                 className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-win-surface-hover transition-colors"

@@ -37,7 +37,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed }: SidebarProps) {
-  const { activeTab, setActiveTab, sipConnected, sipRegistered } = useAppStore();
+  const { activeTab, setActiveTab, sipConnected, sipRegistered, updateInfo } = useAppStore();
 
   if (collapsed) {
     return (
@@ -90,7 +90,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
         {/* Single GitHub entry — collapsed mode */}
         <div className="p-2 border-t border-win-border">
           <button
-            onClick={() => openExternal(`${useAppStore.getState().updateInfo.githubRepo}`)}
+            onClick={() => openExternal(`${updateInfo.githubRepo}`)}
             title="Open Source on GitHub"
             className="w-full flex items-center justify-center px-2 py-2 rounded-lg text-win-text-secondary hover:bg-win-surface-hover hover:text-win-text transition-colors border border-transparent"
           >
@@ -166,10 +166,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
       {/* Version + single GitHub link (the only GitHub entry in the whole app) */}
       <div className="p-3 border-t border-win-border space-y-2">
         <div className="text-center">
-          <p className="text-xs text-win-text-tertiary truncate">v1.4.2 • MIT</p>
+          <p className="text-xs text-win-text-tertiary truncate">v{updateInfo.currentVersion} • MIT</p>
         </div>
         <button
-          onClick={() => openExternal(`${useAppStore.getState().updateInfo.githubRepo}`)}
+          onClick={() => openExternal(`${updateInfo.githubRepo}`)}
           className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-win-text-secondary hover:bg-win-surface-hover hover:text-win-text transition-colors border border-win-border/50"
         >
           <GithubIcon className="w-3.5 h-3.5" />

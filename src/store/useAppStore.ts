@@ -177,14 +177,18 @@ const defaultAppPreferences: AppPreferences = {
   ...persistedUi.appPreferences,
 };
 
+// __APP_VERSION__ and __APP_REPO__ are injected by Vite at build time
+// from package.json (see vite.config.ts). Using the live values means
+// Sidebar / About / AutoUpdate header always show the actual running
+// version, not a stale string.
 const defaultUpdateInfo: UpdateInfo = {
-  currentVersion: '1.4.2',
-  latestVersion: '1.4.2',
+  currentVersion: __APP_VERSION__,
+  latestVersion: __APP_VERSION__,
   updateAvailable: false,
   lastChecked: null,
   autoUpdate: true,
   updateChannel: 'stable',
-  githubRepo: 'https://github.com/jaydenrussell/callerflash',
+  githubRepo: __APP_REPO__,
   releaseNotes: '',
   releasePageUrl: '',
   downloadProgress: 0,
