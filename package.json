@@ -20,23 +20,23 @@
   "dependencies": {
     "clsx": "2.1.1",
     "lucide-react": "^1.21.0",
-    "react": "19.2.6",
-    "react-dom": "19.2.6",
-    "tailwind-merge": "3.4.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "tailwind-merge": "3.6.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "4.1.17",
-    "@types/node": "22.19.17",
-    "@types/react": "19.2.7",
+    "@tailwindcss/vite": "4.3.1",
+    "@types/node": "26.0.0",
+    "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "5.1.1",
-    "electron": "^41.7.1",
+    "@vitejs/plugin-react": "6.0.3",
+    "electron": "^42.5.0",
     "electron-builder": "^26.15.3",
-    "tailwindcss": "4.1.17",
-    "typescript": "5.9.3",
-    "vite": "7.3.2",
-    "vite-plugin-singlefile": "2.3.0"
+    "tailwindcss": "4.3.1",
+    "typescript": "6.0.3",
+    "vite": "8.1.0",
+    "vite-plugin-singlefile": "2.3.3"
   },
   "build": {
     "appId": "com.callerflash.app",
