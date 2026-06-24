@@ -1,18 +1,17 @@
 name: Release — Nightly
 
 # Triggered by:
-#   • push to the `nightly` branch
+#   • push to the `main` branch (automatic nightly for every commit)
 #   • daily schedule (03:00 UTC)
 #   • manual dispatch
 #
-# Build context: the `nightly` branch HEAD.
-# Promote to beta by opening a PR: nightly → beta (or fast-forward merge).
-# Merge into `beta` triggers beta.yml.
+# Build context: the `main` branch HEAD.
+# Promote to beta by manually dispatching the beta workflow.
 
 on:
   push:
     branches:
-      - nightly
+      - main
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:

@@ -1,17 +1,14 @@
 name: Release — Beta
 
-# Triggered by:
-#   • push to the `beta` branch
-#   • manual dispatch
+# Triggered by manual dispatch ONLY.
+# To promote from nightly → beta:
+#   1. Merge main into the beta branch
+#   2. Manually dispatch this workflow
 #
 # Build context: the `beta` branch HEAD.
-# Promote from nightly by merging nightly → beta (PR or fast-forward).
-# Promote to stable by merging beta → stable.
+# Promote to stable by manually dispatching the stable workflow.
 
 on:
-  push:
-    branches:
-      - beta
   workflow_dispatch:
 
 permissions:
