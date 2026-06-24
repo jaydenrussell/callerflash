@@ -131,7 +131,18 @@ function nextBeta(tags, baseVer) {
 
 function nextNightly(baseVer) {
   const sha = shortSha();
-  return `${baseVer}-nightly.${sha}`;
+  // Use the highest version across ALL tags (stable, beta, nightly)
+  // as the base, so nightly is always at least as new as the latest
+  // release on any channel.
+  const tags = gitTags();
+  const allBases = tags
+    .map(parseTag)
+    .filter(Boolean)
+    .map((t) => t.base);
+  const highestBase = allBases.length > 0 ? highest(allBases) : baseVer;
+  // Also compare with package.json version — use whichever is higher.
+  const effective = compareBase(highestBase, baseVer) >= 0 ? highestBase : baseVer;
+  return `${effective}-nightly.${sha}`;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────
