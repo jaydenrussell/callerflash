@@ -29,7 +29,7 @@ function useWindowWidth() {
 }
 
 function TitleBar({ compact }: { compact: boolean }) {
-  const { setIsMinimized, addDiagnosticLog, sipConnected } = useAppStore();
+  const { setIsMinimized, addDiagnosticLog, sipConnected, sipRegistered, updateInfo, setActiveTab } = useAppStore();
 
   // Both the minimize (−) and close (×) buttons hide the window to the
   // system tray. The app keeps running in the background; the user
@@ -54,6 +54,18 @@ function TitleBar({ compact }: { compact: boolean }) {
     });
   };
 
+  // SIP status color: green = registered, yellow = connecting, red = offline
+  const sipColor = sipConnected && sipRegistered
+    ? '#6ccb5f'
+    : sipConnected
+    ? '#fcb827'
+    : '#ff6b6b';
+  const sipLabel = sipConnected && sipRegistered
+    ? 'Registered'
+    : sipConnected
+    ? 'Connecting'
+    : 'Offline';
+
   return (
     // Titlebar is the OS drag region. The `WebkitAppRegion: drag`
     // makes the whole bar draggable, and `no-drag` on the buttons
@@ -72,16 +84,23 @@ function TitleBar({ compact }: { compact: boolean }) {
         <span className="text-xs text-win-text-secondary truncate">
           {compact ? 'CallerFlash' : 'CallerFlash — SIP Client'}
         </span>
-        {!compact && (
-          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold flex-shrink-0 ${sipConnected ? 'bg-win-success/15 text-win-success' : 'bg-win-error/15 text-win-error'}`}>
-            {sipConnected ? 'Listener ready' : 'Disconnected'}
-          </span>
-        )}
-        {compact && (
-          <span
-            className={`w-2 h-2 rounded-full flex-shrink-0 ${sipConnected ? 'bg-win-success' : 'bg-win-error'}`}
-            title={sipConnected ? 'Background listener ready' : 'Disconnected'}
-          />
+        {/* SIP status: traffic-light dot */}
+        <div
+          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+          style={{ backgroundColor: sipColor }}
+          title={sipLabel}
+        />
+        {/* Update available indicator — click to go to Updates tab */}
+        {updateInfo.updateAvailable && (
+          <button
+            onClick={() => setActiveTab('update')}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 transition-colors flex-shrink-0"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            title={`Update v${updateInfo.latestVersion} available — click to open`}
+          >
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <span className="text-[10px] font-semibold text-amber-400">Update</span>
+          </button>
         )}
       </div>
       <div className="flex h-full flex-shrink-0" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
