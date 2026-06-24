@@ -7,6 +7,11 @@
  * path/casing can vary). This script generates the manifest deterministically
  * from the actual build artifacts in the release directory.
  *
+ * Supported installer extensions:
+ *   - Windows: .exe / .msi
+ *   - macOS:   .dmg / .zip
+ *   - Linux:   .deb / .AppImage
+ *
  * Usage:
  *   node scripts/generate-latest-yml.cjs <release-dir> <version> [output-name] [channel]
  *
@@ -16,7 +21,7 @@
  *   node scripts/generate-latest-yml.cjs release 1.5.0 latest.yml latest
  *
  * Output: JSON manifest in the same shape electron-updater reads.
- * Exit: 0 on success, 1 on error.
+ * Exit: 0 on success or graceful skip, 1 only on real errors.
  */
 
 'use strict';
@@ -45,13 +50,18 @@ function sha512Base64(filePath) {
   return crypto.createHash('sha512').update(buf).digest('base64');
 }
 
+// Recognize installers for every supported platform. The manifest's
+// `path` is the file electron-updater will fetch, so it has to be one
+// of these.
+const INSTALLER_RE = /\.(exe|msi|dmg|zip|deb|AppImage|appimage)$/i;
+
 const files = [];
 let mainExe = null;
 
 for (const name of fs.readdirSync(releaseDir).sort()) {
-  // Only consider the actual installer + its blockmap. Ignore SHA256SUMS,
-  // .sig, and any pre-existing manifest files.
-  if (!/\.(exe|blockmap)$/i.test(name)) continue;
+  // Only consider installers + their blockmaps. Ignore SHA256SUMS, .sig,
+  // and any pre-existing manifest files.
+  if (!INSTALLER_RE.test(name) && !/\.blockmap$/i.test(name)) continue;
   const full = path.join(releaseDir, name);
   const stat = fs.statSync(full);
   const entry = {
@@ -60,14 +70,19 @@ for (const name of fs.readdirSync(releaseDir).sort()) {
     size: stat.size,
   };
   files.push(entry);
-  if (name.toLowerCase().endsWith('.exe') && !name.toLowerCase().endsWith('.blockmap')) {
+  if (INSTALLER_RE.test(name)) {
     mainExe = entry;
   }
 }
 
 if (!mainExe) {
-  console.error(`No .exe found in ${releaseDir} — refusing to generate manifest`);
-  process.exit(1);
+  // No installer in the directory at all. Skip silently rather than
+  // failing the build — Linux releases without electron-updater
+  // support (e.g. .deb-only) don't need a manifest.
+  console.error(
+    `[generate-latest-yml] No installer (.exe/.msi/.dmg/.zip/.deb/.AppImage) found in ${releaseDir}; skipping manifest.`
+  );
+  process.exit(0);
 }
 
 const manifest = {
