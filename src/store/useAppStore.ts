@@ -71,7 +71,7 @@ export interface UpdateInfo {
   isInstalling: boolean;
 }
 
-export type TabId = 'dashboard' | 'calls' | 'settings' | 'toast' | 'diagnostics' | 'update' | 'about';
+export type TabId = 'dashboard' | 'calls' | 'settings' | 'preferences' | 'toast' | 'diagnostics' | 'update' | 'about';
 
 interface PersistedUiSettings {
   appPreferences?: Partial<AppPreferences>;

@@ -203,6 +203,87 @@ ipcMain.on('window:close', () => hideWindow());
 ipcMain.on('window:hide-to-tray', () => hideWindow());
 ipcMain.on('window:show', () => showWindow());
 
+// ── Toast window (separate frameless BrowserWindow) ─────────────
+// A dedicated always-on-top, transparent, frameless window that
+// renders incoming-call alerts. Lives independently of the main
+// window so toasts still appear when the main app is hidden to the
+// tray.
+let toastWindow = null;
+
+function createToastWindow() {
+  if (toastWindow && !toastWindow.isDestroyed()) return toastWindow;
+
+  toastWindow = new BrowserWindow({
+    width: 380,
+    height: 150,
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    paintWhenInitiallyHidden: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      preload: path.join(__dirname, 'preload.cjs'),
+    },
+  });
+
+  // The renderer detects ?toast=1 and renders the dedicated ToastWindow
+  // component instead of the main app shell.
+  toastWindow.loadFile(path.join(__dirname, '../dist/index.html'), {
+    search: 'toast=1',
+  });
+
+  toastWindow.setMenuBarVisibility(false);
+  toastWindow.setAlwaysOnTop(true, 'screen-saver');
+
+  // Default position: bottom-right of primary display. The renderer
+  // will reposition via IPC once it reads the persisted position from
+  // localStorage.
+  const { screen } = require('electron');
+  const display = screen.getPrimaryDisplay();
+  const workArea = display.workArea;
+  toastWindow.setPosition(
+    workArea.x + workArea.width - 400,
+    workArea.y + workArea.height - 170
+  );
+
+  return toastWindow;
+}
+
+ipcMain.on('toast:show', (_event, data) => {
+  const win = createToastWindow();
+  win.webContents.send('toast:show:event', data);
+  win.show();
+  win.moveTop();
+});
+
+ipcMain.on('toast:hide', () => {
+  if (toastWindow && !toastWindow.isDestroyed() && toastWindow.isVisible()) {
+    toastWindow.hide();
+  }
+});
+
+ipcMain.on('toast:set-position', (_event, x, y) => {
+  if (!toastWindow || toastWindow.isDestroyed()) return;
+  if (typeof x !== 'number' || typeof y !== 'number') return;
+  toastWindow.setPosition(Math.round(x), Math.round(y));
+});
+
+ipcMain.handle('toast:get-position', () => {
+  if (!toastWindow || toastWindow.isDestroyed()) return null;
+  return toastWindow.getPosition();
+});
+
 // ── IPC: shell link opening (mirror of preload bridge) ─────────────────
 ipcMain.on('shell:open-external', (_event, url) => {
   if (typeof url === 'string' && url.startsWith('https:')) {

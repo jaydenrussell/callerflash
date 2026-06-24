@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
-  Download, RefreshCw, Clock,
-  Shield, GitBranch, Package, ArrowRight,
+  Download, RefreshCw,
+  Shield, GitBranch, ArrowRight,
   ExternalLink, GitCommit, ChevronDown,
   Check, X as XIcon, ShieldCheck, FileLock, Key, Bell
 } from 'lucide-react';
@@ -278,266 +278,215 @@ export function AutoUpdate() {
   const isBusy = phase === 'checking' || phase === 'downloading' || phase === 'installing';
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
+      {/* Compact header — title left, Check + Releases right (no duplicate app header) */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-win-text">Updates</h2>
-          <p className="text-xs text-win-text-secondary mt-1">
-            Check for new releases and install them when you're ready
+          <p className="text-xs text-win-text-secondary mt-0.5">
+            v{updateInfo.currentVersion}
+            {updateInfo.updateAvailable && phase !== 'ready' && (
+              <> · v{updateInfo.latestVersion} available</>
+            )}
+            {phase === 'ready' && (
+              <> · v{updateInfo.latestVersion} ready</>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={openReleasePage}
-            className="flex items-center gap-2 px-3.5 py-2 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm transition-colors border border-win-border"
+            className="flex items-center gap-2 px-3 py-1.5 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm transition-colors border border-win-border"
+            title="Open the GitHub Releases page"
           >
-            <GithubIcon className="w-4 h-4" />
-            View releases
-            <ExternalLink className="w-3.5 h-3.5" />
+            <GithubIcon className="w-3.5 h-3.5" />
+            Releases
+            <ExternalLink className="w-3 h-3" />
           </button>
+          {phase === 'ready' ? (
+            <button
+              onClick={handleInstall}
+              disabled={isBusy}
+              className="flex items-center gap-2 px-3.5 py-1.5 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors border border-win-success/30 disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" />
+              Restart to Install
+            </button>
+          ) : (
+            <button
+              onClick={handleCheckAndDownload}
+              disabled={isBusy}
+              className="flex items-center gap-2 px-3.5 py-1.5 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${phase === 'checking' || phase === 'downloading' ? 'animate-spin' : ''}`} />
+              {phase === 'checking' ? 'Checking…'
+                : phase === 'downloading' ? 'Downloading…'
+                : phase === 'installing' ? 'Installing…'
+                : 'Check for Updates'}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Current Version Card */}
-      <div className="bg-win-surface rounded-xl border border-win-border p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4 min-w-0">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-win-accent/20 to-blue-600/20 flex items-center justify-center border border-win-accent/20">
-              <Package className="w-7 h-7 text-win-accent" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-win-text">CallerFlash</h3>
-                <span className="px-2 py-0.5 bg-win-accent/15 text-win-accent rounded-full text-xs font-semibold">
-                  v{updateInfo.currentVersion}
-                </span>
-              </div>
-              <p className="text-xs text-win-text-secondary mt-0.5">
-                {phase === 'ready'
-                  ? `Update v${updateInfo.latestVersion} ready to install`
-                  : updateInfo.updateAvailable
-                  ? `Update available: v${updateInfo.latestVersion}`
-                  : 'You are running the latest version'}
-              </p>
-              {updateInfo.lastChecked && (
-                <p className="text-xs text-win-text-tertiary mt-1 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  Last checked: {updateInfo.lastChecked.toLocaleString()}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Main action button — changes based on phase. */}
-            {phase === 'ready' ? (
-              <button
-                onClick={handleInstall}
-                disabled={isBusy}
-                className="flex items-center gap-2 px-4 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors border border-win-success/30 disabled:opacity-50"
-              >
-                <Download className="w-4 h-4" />
-                Restart to Install
-              </button>
-            ) : (
-              <button
-                onClick={handleCheckAndDownload}
-                disabled={isBusy}
-                className="flex items-center gap-2 px-4 py-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${phase === 'checking' || phase === 'downloading' ? 'animate-spin' : ''}`} />
-                {phase === 'checking' ? 'Checking…'
-                  : phase === 'downloading' ? 'Downloading…'
-                  : phase === 'installing' ? 'Installing…'
-                  : 'Check for Updates'}
-              </button>
-            )}
+      {/* Ready-to-install banner */}
+      {phase === 'ready' && (
+        <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-win-success/10 border border-win-success/20">
+          <Bell className="w-4 h-4 text-win-success flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-win-success">Update ready</p>
+            <p className="text-xs text-win-text-secondary leading-snug mt-0.5">
+              v{updateInfo.latestVersion} downloaded + verified. Tray notification fired.
+              Click <span className="font-semibold">Restart to Install</span> when you're ready — never installs silently.
+            </p>
           </div>
         </div>
+      )}
 
-        {/* Ready-to-install banner with bell + tray notification hint */}
-        {phase === 'ready' && (
-          <div className="mt-5 pt-5 border-t border-win-border">
-            <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-win-success/10 border border-win-success/20">
-              <div className="w-9 h-9 rounded-lg bg-win-success/20 flex items-center justify-center flex-shrink-0">
-                <Bell className="w-4 h-4 text-win-success" />
+      {/* Verification Audit Panel */}
+      {verification && (
+        <div className="bg-win-surface rounded-xl border border-win-border p-3">
+          <div className="flex items-center gap-2 mb-2">
+            {verification.approved ? (
+              <ShieldCheck className="w-4 h-4 text-win-success" />
+            ) : (
+              <XIcon className="w-4 h-4 text-win-error" />
+            )}
+            <h3 className="text-sm font-semibold text-win-text">
+              Verification {verification.approved ? 'Passed' : 'Failed'}
+            </h3>
+          </div>
+          <div className="space-y-1">
+            {verification.steps.map((step, i) => (
+              <div key={i} className="flex items-start gap-2 px-2.5 py-1.5 rounded-lg bg-win-card border border-win-border/50">
+                {step.passed ? (
+                  <Check className="w-3 h-3 text-win-success flex-shrink-0 mt-0.5" />
+                ) : (
+                  <XIcon className="w-3 h-3 text-win-error flex-shrink-0 mt-0.5" />
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-win-text">{step.name}</p>
+                  <p className="text-[11px] text-win-text-tertiary">{step.detail}</p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-win-success">Update ready</p>
-                <p className="text-xs text-win-text-secondary leading-relaxed mt-0.5">
-                  v{updateInfo.latestVersion} was downloaded and verified. A tray notification was sent.
-                  Click <span className="font-semibold">Restart to Install</span> to apply it now, or do it later —
-                  the app never updates silently in the background.
-                </p>
-              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Download Progress */}
+      {(phase === 'downloading' || phase === 'installing') && (
+        <div className="bg-win-surface rounded-xl border border-win-border p-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-xs font-medium text-win-text">
+              {phase === 'installing' ? 'Installing update…' : 'Downloading update…'}
+            </p>
+            <span className="text-xs font-bold text-win-accent">
+              {Math.round(updateInfo.downloadProgress)}%
+            </span>
+          </div>
+          <div className="h-1.5 bg-win-card rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-win-accent to-blue-500 rounded-full transition-all duration-300"
+              style={{ width: `${updateInfo.downloadProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Release Notes (collapsed) */}
+      {updateInfo.updateAvailable && updateInfo.releaseNotes && phase !== 'downloading' && phase !== 'installing' && (
+        <div className="bg-win-surface rounded-xl border border-win-border p-3">
+          <button
+            onClick={() => setShowReleaseNotes(!showReleaseNotes)}
+            className="flex items-center gap-2 text-xs font-medium text-win-text-secondary hover:text-win-text transition-colors w-full text-left"
+          >
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showReleaseNotes ? 'rotate-180' : ''}`} />
+            Release notes for v{updateInfo.latestVersion}
+          </button>
+          {showReleaseNotes && (
+            <pre className="mt-2 text-[11px] text-win-text-secondary bg-win-card rounded-lg p-2.5 border border-win-border/50 whitespace-pre-wrap">
+              {updateInfo.releaseNotes}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {/* Settings + Security side by side, tighter */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="bg-win-surface rounded-xl border border-win-border p-3">
+          <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
+            <Shield className="w-4 h-4 text-win-accent" />
+            Settings
+          </h3>
+          <div
+            className="flex items-center justify-between p-2.5 rounded-lg bg-win-card border border-win-border/50 hover:border-win-border cursor-pointer transition-colors mb-2"
+            onClick={() => setUpdateInfo({ autoUpdate: !updateInfo.autoUpdate })}
+          >
+            <div className="min-w-0 pr-2">
+              <p className="text-sm font-medium text-win-text">Notify on update available</p>
+              <p className="text-[11px] text-win-text-tertiary">Tray notification + in-app banner. Never installs silently.</p>
+            </div>
+            <div className={`w-9 h-[20px] rounded-full transition-colors relative flex-shrink-0 ${
+              updateInfo.autoUpdate ? 'bg-win-accent' : 'bg-win-border'
+            }`}>
+              <div className={`absolute top-[2px] w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                updateInfo.autoUpdate ? 'translate-x-[19px]' : 'translate-x-[2px]'
+              }`} />
             </div>
           </div>
-        )}
 
-        {/* Verification Audit Panel */}
-        {verification && (
-          <div className={`mt-5 pt-5 border-t border-win-border`}>
-            <div className="flex items-center gap-2 mb-3">
-              {verification.approved ? (
-                <ShieldCheck className="w-4 h-4 text-win-success" />
-              ) : (
-                <XIcon className="w-4 h-4 text-win-error" />
-              )}
-              <h3 className="text-sm font-semibold text-win-text">
-                Verification {verification.approved ? 'Passed' : 'Failed'}
-              </h3>
-            </div>
-            <div className="space-y-1.5">
-              {verification.steps.map((step, i) => (
-                <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-win-card border border-win-border/50">
-                  {step.passed ? (
-                    <Check className="w-3.5 h-3.5 text-win-success flex-shrink-0 mt-0.5" />
-                  ) : (
-                    <XIcon className="w-3.5 h-3.5 text-win-error flex-shrink-0 mt-0.5" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-win-text">{step.name}</p>
-                    <p className="text-xs text-win-text-tertiary">{step.detail}</p>
-                  </div>
-                </div>
+          <div className="p-2.5 rounded-lg bg-win-card border border-win-border/50">
+            <p className="text-[11px] font-medium text-win-text-secondary mb-1.5">Update Channel</p>
+            <div className="flex gap-1.5">
+              {['stable', 'beta', 'nightly'].map((channel) => (
+                <button
+                  key={channel}
+                  onClick={() => setUpdateInfo({ updateChannel: channel as any })}
+                  className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    updateInfo.updateChannel === channel
+                      ? 'bg-win-accent/20 text-win-accent border border-win-accent/30'
+                      : 'bg-win-surface text-win-text-secondary hover:bg-win-surface-hover border border-win-border'
+                  }`}
+                >
+                  <GitBranch className="w-3 h-3 mx-auto mb-0.5" />
+                  {channel.charAt(0).toUpperCase() + channel.slice(1)}
+                </button>
               ))}
             </div>
           </div>
-        )}
-
-        {/* Download Progress */}
-        {(phase === 'downloading' || phase === 'installing') && (
-          <div className="mt-5 pt-5 border-t border-win-border">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-win-text">
-                {phase === 'installing' ? 'Installing update…' : 'Downloading update…'}
-              </p>
-              <span className="text-sm font-bold text-win-accent">
-                {Math.round(updateInfo.downloadProgress)}%
-              </span>
-            </div>
-            <div className="h-2 bg-win-card rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-win-accent to-blue-500 rounded-full transition-all duration-300"
-                style={{ width: `${updateInfo.downloadProgress}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Release Notes */}
-        {updateInfo.updateAvailable && updateInfo.releaseNotes && phase !== 'downloading' && phase !== 'installing' && (
-          <div className="mt-5 pt-5 border-t border-win-border">
-            <button
-              onClick={() => setShowReleaseNotes(!showReleaseNotes)}
-              className="flex items-center gap-2 text-sm font-medium text-win-text-secondary hover:text-win-text transition-colors"
-            >
-              <ChevronDown className={`w-4 h-4 transition-transform ${showReleaseNotes ? 'rotate-180' : ''}`} />
-              Release Notes for v{updateInfo.latestVersion}
-            </button>
-            {showReleaseNotes && (
-              <pre className="mt-3 text-xs text-win-text-secondary bg-win-card rounded-lg p-3 border border-win-border/50 whitespace-pre-wrap">
-                {updateInfo.releaseNotes}
-              </pre>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Settings */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="bg-win-surface rounded-xl border border-win-border p-5">
-          <h3 className="text-sm font-semibold text-win-text mb-4 flex items-center gap-2">
-            <Shield className="w-4 h-4 text-win-accent" />
-            Update Settings
-          </h3>
-          <div className="space-y-3">
-            <div
-              className="flex items-center justify-between p-3 rounded-lg bg-win-card border border-win-border/50 hover:border-win-border cursor-pointer transition-colors"
-              onClick={() => setUpdateInfo({ autoUpdate: !updateInfo.autoUpdate })}
-            >
-              <div>
-                <p className="text-sm font-medium text-win-text">Notify on update available</p>
-                <p className="text-xs text-win-text-tertiary">Tray notification + in-app banner when a new version is verified. Never installs silently.</p>
-              </div>
-              <div className={`w-10 h-[22px] rounded-full transition-colors relative ${
-                updateInfo.autoUpdate ? 'bg-win-accent' : 'bg-win-border'
-              }`}>
-                <div className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                  updateInfo.autoUpdate ? 'translate-x-[21px]' : 'translate-x-[3px]'
-                }`} />
-              </div>
-            </div>
-
-            <div className="p-3 rounded-lg bg-win-card border border-win-border/50">
-              <p className="text-xs font-medium text-win-text-secondary mb-2">Update Channel</p>
-              <div className="flex gap-2">
-                {['stable', 'beta', 'nightly'].map((channel) => (
-                  <button
-                    key={channel}
-                    onClick={() => setUpdateInfo({ updateChannel: channel as any })}
-                    className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                      updateInfo.updateChannel === channel
-                        ? 'bg-win-accent/20 text-win-accent border border-win-accent/30'
-                        : 'bg-win-surface text-win-text-secondary hover:bg-win-surface-hover border border-win-border'
-                    }`}
-                  >
-                    <GitBranch className="w-3 h-3 mx-auto mb-1" />
-                    {channel.charAt(0).toUpperCase() + channel.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="p-3 rounded-lg bg-win-card border border-win-border/50">
-              <p className="text-xs font-medium text-win-text-secondary mb-2">GitHub Repository</p>
-              <div className="flex items-center gap-2">
-                <GithubIcon className="w-4 h-4 text-win-text-tertiary" />
-                <code className="text-xs text-win-accent flex-1 truncate">
-                  {updateInfo.githubRepo}
-                </code>
-              </div>
-            </div>
-          </div>
         </div>
 
-        {/* Security */}
-        <div className="bg-win-surface rounded-xl border border-win-border p-5">
-          <h3 className="text-sm font-semibold text-win-text mb-4 flex items-center gap-2">
+        <div className="bg-win-surface rounded-xl border border-win-border p-3">
+          <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-win-success" />
-            Update Security
+            Security
           </h3>
-          <div className="space-y-3">
+          <div className="space-y-1.5">
             <SecurityRow
-              icon={<FileLock className="w-4 h-4 text-win-accent" />}
+              icon={<FileLock className="w-3.5 h-3.5 text-win-accent" />}
               title="Authenticode Code Signing"
-              status="Required at install time by Windows SmartScreen"
             />
             <SecurityRow
-              icon={<ShieldCheck className="w-4 h-4 text-win-success" />}
+              icon={<ShieldCheck className="w-3.5 h-3.5 text-win-success" />}
               title="SHA-256 Checksum"
-              status="Verified against SHA256SUMS attached to each release"
             />
             <SecurityRow
-              icon={<Key className="w-4 h-4 text-win-warning" />}
+              icon={<Key className="w-3.5 h-3.5 text-win-warning" />}
               title="Ed25519 Detached Signature"
-              status="Pinned public key embedded in app binary"
             />
             <SecurityRow
-              icon={<Shield className="w-4 h-4 text-win-accent" />}
+              icon={<Shield className="w-3.5 h-3.5 text-win-accent" />}
               title="HTTPS + Host Allow-list"
-              status="github.com, api.github.com, objects.githubusercontent.com"
             />
             <SecurityRow
-              icon={<Shield className="w-4 h-4 text-win-accent" />}
+              icon={<Shield className="w-3.5 h-3.5 text-win-accent" />}
               title="Version Monotonicity"
-              status="Refuses to install a release older than current"
             />
-            <details className="text-xs text-win-text-tertiary group">
+            <details className="text-[11px] text-win-text-tertiary group mt-1">
               <summary className="cursor-pointer hover:text-win-text-secondary select-none">
                 How to verify a release manually
               </summary>
-              <pre className="mt-2 p-3 bg-win-card rounded-lg border border-win-border/50 overflow-x-auto leading-relaxed">{`# 1. Download the .sig and SHA256SUMS from the GitHub release
+              <pre className="mt-1.5 p-2.5 bg-win-card rounded-lg border border-win-border/50 overflow-x-auto leading-relaxed text-[10px]">{`# 1. Download the .sig and SHA256SUMS from the GitHub release
 curl -LO https://github.com/.../CallerFlash-Setup-1.5.0.exe.sig
 curl -LO https://github.com/.../SHA256SUMS
 
@@ -554,36 +503,34 @@ sha256sum -c SHA256SUMS --ignore-missing`}</pre>
         </div>
 
         {/* Release History */}
-        <div className="bg-win-surface rounded-xl border border-win-border p-5">
-          <h3 className="text-sm font-semibold text-win-text mb-4 flex items-center gap-2">
+        <div className="bg-win-surface rounded-xl border border-win-border p-3 lg:col-span-2">
+          <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
             <GitCommit className="w-4 h-4 text-win-accent" />
             Release History
           </h3>
-          <div className="space-y-3 max-h-80 overflow-y-auto">
+          <div className="space-y-2 max-h-64 overflow-y-auto">
             {releaseHistory.map((release) => (
               <div
                 key={release.version}
-                className={`p-3 rounded-lg border transition-colors ${
-                  release.current
-                    ? 'bg-win-accent/5 border-win-accent/20'
-                    : 'bg-win-card border-win-border/50'
+                className={`p-2.5 rounded-lg border ${
+                  release.current ? 'bg-win-accent/5 border-win-accent/20' : 'bg-win-card border-win-border/50'
                 }`}
               >
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-win-text">{release.version}</span>
+                    <span className="text-xs font-bold text-win-text">{release.version}</span>
                     {release.current && (
-                      <span className="px-1.5 py-0.5 bg-win-accent/15 text-win-accent rounded text-xs font-semibold">
+                      <span className="px-1.5 py-0.5 bg-win-accent/15 text-win-accent rounded text-[10px] font-semibold">
                         CURRENT
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-win-text-tertiary">{release.date}</span>
+                  <span className="text-[11px] text-win-text-tertiary">{release.date}</span>
                 </div>
-                <ul className="space-y-1">
+                <ul className="space-y-0.5">
                   {release.notes.map((note, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-xs text-win-text-secondary">
-                      <ArrowRight className="w-3 h-3 text-win-text-tertiary mt-0.5 flex-shrink-0" />
+                    <li key={i} className="flex items-start gap-1 text-[11px] text-win-text-secondary">
+                      <ArrowRight className="w-2.5 h-2.5 text-win-text-tertiary mt-0.5 flex-shrink-0" />
                       {note}
                     </li>
                   ))}
@@ -600,19 +547,14 @@ sha256sum -c SHA256SUMS --ignore-missing`}</pre>
 function SecurityRow({
   icon,
   title,
-  status,
 }: {
   icon: React.ReactNode;
   title: string;
-  status: string;
 }) {
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg bg-win-card border border-win-border/50">
-      <span className="mt-0.5 flex-shrink-0">{icon}</span>
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-win-text">{title}</p>
-        <p className="text-xs text-win-text-tertiary">{status}</p>
-      </div>
+    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-win-card border border-win-border/50">
+      <span className="flex-shrink-0">{icon}</span>
+      <p className="text-xs font-medium text-win-text">{title}</p>
     </div>
   );
 }

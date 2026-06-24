@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { CallHistory } from './components/CallHistory';
 import { SipSettings } from './components/SipSettings';
+import { Preferences } from './components/Preferences';
 import { ToastSettings } from './components/ToastSettings';
 import { Diagnostics } from './components/Diagnostics';
 import { AutoUpdate } from './components/AutoUpdate';
@@ -119,6 +120,7 @@ function MainContent() {
     dashboard: <Dashboard />,
     calls: <CallHistory />,
     settings: <SipSettings />,
+    preferences: <Preferences />,
     toast: <ToastSettings />,
     diagnostics: <Diagnostics />,
     update: <AutoUpdate />,

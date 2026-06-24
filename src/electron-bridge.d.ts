@@ -36,6 +36,40 @@ declare global {
     show: (title: string, body: string) => void;
   }
 
+  interface CallerFlashToastEventData {
+    id: string;
+    callerNumber: string;
+    callerName: string;
+    timestamp: string; // ISO
+    config: {
+      duration: number;
+      backgroundColor: string;
+      accentColor: string;
+      textColor: string;
+      borderRadius: number;
+      opacity: number;
+      fontFamily: string;
+      fontSize: number;
+      autoCopyToClipboard: boolean;
+      showCallerName: boolean;
+      showTimestamp: boolean;
+      maxWidth: number;
+    };
+  }
+
+  interface CallerFlashToastApi {
+    /** Push a new toast into the dedicated toast window. */
+    show: (data: CallerFlashToastEventData) => void;
+    /** Hide the toast window. */
+    hide: () => void;
+    /** Move the toast window to (x, y) in display coords. */
+    setPosition: (x: number, y: number) => void;
+    /** Get the current toast window position. */
+    getPosition: () => Promise<{ x: number; y: number } | null>;
+    /** Subscribe to incoming toast events (renderer side of the bridge). */
+    onShow: (callback: (data: CallerFlashToastEventData) => void) => () => void;
+  }
+
   type UpdateChannel = 'stable' | 'beta' | 'nightly';
 
   interface CallerFlashUpdaterStatus {
@@ -64,6 +98,7 @@ declare global {
     safeStorage: CallerFlashSafeStorageApi;
     shell: CallerFlashShellApi;
     notify: CallerFlashNotifyApi;
+    toast: CallerFlashToastApi;
     updater: CallerFlashUpdaterApi;
     platform: CallerFlashPlatformInfo;
   }

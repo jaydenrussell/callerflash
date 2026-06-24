@@ -50,6 +50,23 @@ contextBridge.exposeInMainWorld('callerflash', {
     show: (title, body) => ipcRenderer.send('notify:show', title, body),
   },
 
+  // ── Toast window (separate frameless BrowserWindow) ───────────
+  // Used by the main renderer to display incoming-call alerts in a
+  // dedicated always-on-top window that survives the main window
+  // being hidden to the tray. Only meaningful in the Electron build;
+  // every method is a no-op in the web demo.
+  toast: {
+    show: (data) => ipcRenderer.send('toast:show', data),
+    hide: () => ipcRenderer.send('toast:hide'),
+    setPosition: (x, y) => ipcRenderer.send('toast:set-position', x, y),
+    getPosition: () => ipcRenderer.invoke('toast:get-position'),
+    onShow: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('toast:show:event', handler);
+      return () => ipcRenderer.removeListener('toast:show:event', handler);
+    },
+  },
+
   // ── Auto-updater ────────────────────────────────────────────────
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),

@@ -34,7 +34,38 @@ export function simulateIncomingCall(source: 'dashboard' | 'toast-settings' | 'b
   };
 
   addCallRecord(record);
-  addToast(record);
+
+  // Two render paths:
+  //   • Electron (window.callerflash.toast exists): fire to the OS-level
+  //     toast window only — no in-app duplicate. The toast window is
+  //     visible even when the main app is hidden to the tray.
+  //   • Web demo: render in-app via the existing ToastContainer.
+  const { toastConfig } = useAppStore.getState();
+  if (typeof window !== 'undefined' && window.callerflash?.toast?.show) {
+    window.callerflash.toast.show({
+      id: record.id,
+      callerNumber: record.callerNumber,
+      callerName: record.callerName,
+      timestamp: record.timestamp.toISOString(),
+      config: {
+        duration: toastConfig.duration,
+        backgroundColor: toastConfig.backgroundColor,
+        accentColor: toastConfig.accentColor,
+        textColor: toastConfig.textColor,
+        borderRadius: toastConfig.borderRadius,
+        opacity: toastConfig.opacity,
+        fontFamily: toastConfig.fontFamily,
+        fontSize: toastConfig.fontSize,
+        autoCopyToClipboard: toastConfig.autoCopyToClipboard,
+        showCallerName: toastConfig.showCallerName,
+        showTimestamp: toastConfig.showTimestamp,
+        maxWidth: toastConfig.maxWidth,
+      },
+    });
+  } else {
+    addToast(record);
+  }
+
   addDiagnosticLog({
     level: 'info',
     category: 'SIP',
