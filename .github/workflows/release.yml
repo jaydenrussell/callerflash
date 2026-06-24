@@ -317,7 +317,7 @@ jobs:
 
       - uses: actions/download-artifact@v5
         with:
-          name: callerflash-signed-${{ needs.route.outputs.version }}-windows
+          name: callerflash-signed-${{ needs.route.outputs.version }}
           path: release
 
       - uses: actions/download-artifact@v5
