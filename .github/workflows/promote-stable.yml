@@ -1,0 +1,32 @@
+name: Promote → Stable
+
+# Triggers:
+#   • Manual dispatch from the Actions tab ("Run workflow")
+#
+# Builds the `stable` channel. Calls the reusable engine in
+# `.github/workflows/release.yml` with channel=stable.
+#
+# Auto-increments the patch component from existing `vX.Y.Z` tags unless
+# `version_override` is provided. To bump minor/major instead, override
+# the version explicitly (e.g., "1.5.0" or "2.0.0").
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: 'Optional explicit version (e.g. "1.5.0"). Leave empty to auto-increment patch.'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  stable:
+    name: Stable build
+    uses: ./.github/workflows/release.yml
+    with:
+      channel: stable
+      version_override: ${{ inputs.version_override }}
+    secrets: inherit
