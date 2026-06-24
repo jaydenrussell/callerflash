@@ -1,9 +1,9 @@
-import { useState } from 'react';
 import {
-  Palette, Bell, RotateCcw, Save,
+  Palette, Bell, RotateCcw,
   Clock, PhoneIncoming, Undo2
 } from 'lucide-react';
 import { useAppStore, type ToastConfig } from '../store/useAppStore';
+import { simulateIncomingCall } from '../utils/simulateIncomingCall';
 
 const fontFamilies = [
   'Inter', 'Segoe UI', 'Arial', 'Helvetica', 'Roboto',
@@ -19,24 +19,15 @@ const positionOptions = [
 
 export function ToastSettings() {
   const {
-    toastConfig, setToastConfig, addToast, addCallRecord, addDiagnosticLog,
+    toastConfig, setToastConfig, addDiagnosticLog,
     toastDragPosition, setToastDragPosition,
   } = useAppStore();
-  const [saved, setSaved] = useState(false);
 
-  const update = (updates: Partial<ToastConfig>) => {
-    setToastConfig(updates);
-  };
-
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-    addDiagnosticLog({
-      level: 'success',
-      category: 'TOAST',
-      message: 'Toast configuration saved',
-    });
-  };
+  // All changes auto-persist via the Zustand store + JSON localStorage
+  // hydration in useAppStore. There is no Save button — toggles commit
+  // on every change, matching the behavior of the in-app Preferences
+  // and SIP Settings pages.
+  const update = (updates: Partial<ToastConfig>) => setToastConfig(updates);
 
   const handleReset = () => {
     setToastConfig({
@@ -63,63 +54,45 @@ export function ToastSettings() {
     });
   };
 
+  // Fire a real incoming call through the same code path the SIP
+  // listener would use. In the Electron build this opens the dedicated
+  // frameless toast window; in the web demo it renders in-app.
   const handlePreview = () => {
-    const record = {
-      id: crypto.randomUUID(),
-      callerNumber: '(514) 555-0199',
-      callerName: 'Preview Caller',
-      timestamp: new Date(),
-      duration: 0,
-      direction: 'inbound' as const,
-      status: 'answered' as const,
-    };
-    addCallRecord(record);
-    addToast(record);
-    addDiagnosticLog({
-      level: 'info',
-      category: 'TOAST',
-      message: 'Toast preview triggered',
-    });
+    simulateIncomingCall('toast-settings');
+    addDiagnosticLog({ level: 'info', category: 'TOAST', message: 'Toast preview fired' });
   };
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-win-text">Toast Configuration</h2>
-          <p className="text-xs text-win-text-secondary mt-1">
-            Customize how incoming call notifications appear
+          <p className="text-xs text-win-text-secondary mt-0.5">
+            Changes save automatically — drag the live toast to set a custom position.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handlePreview}
-            className="flex items-center gap-2 px-3.5 py-2 bg-win-accent/15 hover:bg-win-accent/25 text-win-accent rounded-lg text-sm font-medium transition-colors border border-win-accent/20"
+            className="flex items-center gap-2 px-3 py-1.5 bg-win-accent/15 hover:bg-win-accent/25 text-win-accent rounded-lg text-sm font-medium transition-colors border border-win-accent/20"
           >
-            <PhoneIncoming className="w-4 h-4" />
+            <PhoneIncoming className="w-3.5 h-3.5" />
             Test Toast
           </button>
           <button
             onClick={handleReset}
-            className="flex items-center gap-2 px-3.5 py-2 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm font-medium transition-colors border border-win-border"
+            className="flex items-center gap-2 px-3 py-1.5 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm font-medium transition-colors border border-win-border"
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-3.5 h-3.5" />
             Reset
-          </button>
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-2 px-4 py-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors"
-          >
-            <Save className="w-4 h-4" />
-            {saved ? 'Saved!' : 'Save'}
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Appearance — combines typography & colors */}
         <Section icon={<Palette className="w-4 h-4" />} title="Appearance" desc="Fonts, colors, and shape">
-          <div className="space-y-4">
+          <div className="space-y-3">
             <SliderField
               label="Font Size"
               value={toastConfig.fontSize}
@@ -148,7 +121,7 @@ export function ToastSettings() {
               </div>
             </InputField>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2">
               <ColorField
                 label="Text"
                 value={toastConfig.textColor}
@@ -166,7 +139,7 @@ export function ToastSettings() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <SliderField
                 label="Corner Radius"
                 value={toastConfig.borderRadius}
@@ -201,7 +174,7 @@ export function ToastSettings() {
 
         {/* Position & Timing */}
         <Section icon={<Clock className="w-4 h-4" />} title="Position & Timing" desc="Where and how long toasts appear">
-          <div className="space-y-4">
+          <div className="space-y-3">
             <SliderField
               label="Duration"
               value={toastConfig.duration}
@@ -246,8 +219,8 @@ export function ToastSettings() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-win-text-tertiary mt-2 leading-relaxed">
-                Tip: drag any toast to set a custom position — it's saved for future calls.
+              <p className="text-[11px] text-win-text-tertiary mt-2 leading-snug">
+                Drag any toast to set a custom position — saved for future calls.
               </p>
             </div>
           </div>

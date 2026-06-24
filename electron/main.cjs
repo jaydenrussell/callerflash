@@ -9,6 +9,7 @@
 
 const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, safeStorage, Notification } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 // ── Single-instance lock ───────────────────────────────────────────────
 // If a second copy is launched (double-click on the .exe again, etc.),
@@ -212,23 +213,55 @@ ipcMain.on('window:show', () => showWindow());
 // tray.
 let toastWindow = null;
 
+const TOAST_DEFAULT = { x: null, y: null, width: 380, height: 150 };
+
+function toastStatePath() {
+  return path.join(app.getPath('userData'), 'toast-window-state.json');
+}
+
+function loadToastState() {
+  try {
+    const p = toastStatePath();
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {
+    // Corrupt or unreadable — fall through to defaults.
+  }
+  return null;
+}
+
+function saveToastState() {
+  if (!toastWindow || toastWindow.isDestroyed()) return;
+  try {
+    const [x, y] = toastWindow.getPosition();
+    const [w, h] = toastWindow.getSize();
+    fs.writeFileSync(
+      toastStatePath(),
+      JSON.stringify({ x, y, width: w, height: h }),
+      'utf8'
+    );
+  } catch {
+    // Don't crash the app over a state-write failure.
+  }
+}
+
 function createToastWindow() {
   if (toastWindow && !toastWindow.isDestroyed()) return toastWindow;
 
-  toastWindow = new BrowserWindow({
-    width: 380,
-    height: 150,
+  const state = { ...TOAST_DEFAULT, ...(loadToastState() || {}) };
+  const opts = {
+    width: state.width,
+    height: state.height,
     show: false,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
-    resizable: false,
+    resizable: true, // user can resize from corner drag; size persists
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    focusable: false,
+    focusable: true, // was false; needed for show() to be reliable
     hasShadow: false,
     paintWhenInitiallyHidden: true,
     webPreferences: {
@@ -237,7 +270,14 @@ function createToastWindow() {
       sandbox: true,
       preload: path.join(__dirname, 'preload.cjs'),
     },
-  });
+  };
+  // Only pass x/y when we actually have a saved position; otherwise
+  // let Electron choose (center-ish on the primary display).
+  if (Number.isFinite(state.x) && Number.isFinite(state.y)) {
+    opts.x = state.x;
+    opts.y = state.y;
+  }
+  toastWindow = new BrowserWindow(opts);
 
   // The renderer detects ?toast=1 and renders the dedicated ToastWindow
   // component instead of the main app shell.
@@ -248,25 +288,19 @@ function createToastWindow() {
   toastWindow.setMenuBarVisibility(false);
   toastWindow.setAlwaysOnTop(true, 'screen-saver');
 
-  // Default position: bottom-right of primary display. The renderer
-  // will reposition via IPC once it reads the persisted position from
-  // localStorage.
-  const { screen } = require('electron');
-  const display = screen.getPrimaryDisplay();
-  const workArea = display.workArea;
-  toastWindow.setPosition(
-    workArea.x + workArea.width - 400,
-    workArea.y + workArea.height - 170
-  );
+  // Persist position + size on every move / resize so closing & reopening
+  // the app restores the toast window exactly where the user left it.
+  toastWindow.on('resize', saveToastState);
+  toastWindow.on('move', saveToastState);
 
   return toastWindow;
 }
 
 ipcMain.on('toast:show', (_event, data) => {
   const win = createToastWindow();
+  // Make sure the window is shown even if it was previously hidden.
+  if (!win.isVisible()) win.show();
   win.webContents.send('toast:show:event', data);
-  win.show();
-  win.moveTop();
 });
 
 ipcMain.on('toast:hide', () => {
@@ -279,6 +313,7 @@ ipcMain.on('toast:set-position', (_event, x, y) => {
   if (!toastWindow || toastWindow.isDestroyed()) return;
   if (typeof x !== 'number' || typeof y !== 'number') return;
   toastWindow.setPosition(Math.round(x), Math.round(y));
+  saveToastState();
 });
 
 ipcMain.handle('toast:get-position', () => {
