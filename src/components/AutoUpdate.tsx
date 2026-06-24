@@ -418,8 +418,14 @@ export function AutoUpdate() {
     }
 
     let fileName: string;
-    try { fileName = decodeURIComponent(new URL(artifact.downloadUrl).pathname.split('/').pop() || ''); } catch { fileName = ''; }
-    if (!fileName || !fileName.includes('.')) fileName = `CallerFlash-${artifact.version}.exe`;
+    try {
+      const urlPath = new URL(artifact.downloadUrl).pathname;
+      const segs = urlPath.split('/');
+      fileName = decodeURIComponent(segs[segs.length - 1] || '');
+    } catch { fileName = ''; }
+    if (!/\.(exe|msi|deb|AppImage|dmg|zip)$/i.test(fileName)) {
+      fileName = `CallerFlash-${artifact.version}.exe`;
+    }
     setDownloadedFileName(fileName);
 
     try {
