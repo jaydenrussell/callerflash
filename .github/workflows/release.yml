@@ -235,18 +235,18 @@ jobs:
       - name: Generate channel-specific update manifest
         shell: bash
         run: |
-          cd release
           CHANNEL="${{ needs.route.outputs.channel }}"
           VERSION="${{ needs.route.outputs.version }}"
           # electron-updater reads `latest.yml` for stable. For beta/nightly,
           # generate a parallel manifest from the same build artifacts with
-          # the appropriate `channel` field.
+          # the appropriate `channel` field. The script takes the release
+          # directory as its first arg, so we don't need to cd into it.
           case "$CHANNEL" in
             beta)
-              node ../../scripts/generate-latest-yml.cjs . "$VERSION" beta.yml beta
+              node scripts/generate-latest-yml.cjs release "$VERSION" beta.yml beta
               ;;
             nightly)
-              node ../../scripts/generate-latest-yml.cjs . "$VERSION" nightly.yml nightly
+              node scripts/generate-latest-yml.cjs release "$VERSION" nightly.yml nightly
               ;;
             stable)
               echo "Stable channel: latest.yml already generated in build job"
