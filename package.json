@@ -73,7 +73,7 @@
     },
     "publish": null,
     "extraResources": [
-      { "from": "build/cglogo.ico", "to": "cflogo.ico" },
+      { "from": "build/cflogo.ico", "to": "cflogo.ico" },
       { "from": "build/cflogo.png", "to": "cflogo.png" }
     ],
     "linux": {
