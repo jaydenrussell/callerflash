@@ -237,20 +237,19 @@ jobs:
         run: |
           cd release
           CHANNEL="${{ needs.route.outputs.channel }}"
+          VERSION="${{ needs.route.outputs.version }}"
           # electron-updater reads `latest.yml` for stable. For beta/nightly,
-          # we publish `beta.yml` / `nightly.yml` with the same content but
+          # generate a parallel manifest from the same build artifacts with
           # the appropriate `channel` field.
           case "$CHANNEL" in
             beta)
-              sed 's/^channel: .*/channel: beta/' latest.yml > beta.yml
-              echo "Generated: beta.yml"
+              node ../../scripts/generate-latest-yml.cjs . "$VERSION" beta.yml beta
               ;;
             nightly)
-              sed 's/^channel: .*/channel: nightly/' latest.yml > nightly.yml
-              echo "Generated: nightly.yml"
+              node ../../scripts/generate-latest-yml.cjs . "$VERSION" nightly.yml nightly
               ;;
             stable)
-              echo "Stable channel: latest.yml is used as-is"
+              echo "Stable channel: latest.yml already generated in build job"
               ;;
           esac
 
@@ -267,7 +266,6 @@ jobs:
             release/SHA256SUMS
             release/*.sig
           retention-days: 7
-          if-no-files-found: error
 
   # ── Publish GitHub Release ───────────────────────────────────────
   release:
@@ -285,6 +283,33 @@ jobs:
         with:
           name: callerflash-signed-${{ needs.route.outputs.version }}
           path: release
+
+      - name: Determine release assets
+        id: assets
+        shell: bash
+        run: |
+          # Each channel only attaches the update manifest for THAT channel:
+          #   stable  → latest.yml
+          #   beta    → beta.yml
+          #   nightly → nightly.yml
+          # Always attach: signed .exe, blockmap, SHA256SUMS, *.sig.
+          # Use newline separator — the multi-line string inside YAML's
+          # `run: |` block must stay at the block's indent or YAML breaks.
+          CHANNEL="${{ needs.route.outputs.channel }}"
+          NL=$'\n'
+          ASSETS="release/*.exe${NL}release/*.blockmap${NL}release/SHA256SUMS${NL}release/*.sig"
+          case "$CHANNEL" in
+            stable)  ASSETS="${ASSETS}${NL}release/latest.yml"  ;;
+            beta)    ASSETS="${ASSETS}${NL}release/beta.yml"    ;;
+            nightly) ASSETS="${ASSETS}${NL}release/nightly.yml" ;;
+          esac
+          {
+            echo "files<<EOF"
+            echo "$ASSETS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "→ Attachments:"
+          printf '%s\n' "$ASSETS" | sed 's/^/    /'
 
       - name: Generate release notes
         shell: bash
@@ -346,14 +371,7 @@ jobs:
           prerelease: ${{ needs.route.outputs.prerelease }}
           draft: false
           make_latest: ${{ needs.route.outputs.channel == 'stable' }}
-          files: |
-            release/*.exe
-            release/*.blockmap
-            release/latest.yml
-            release/beta.yml
-            release/nightly.yml
-            release/SHA256SUMS
-            release/*.sig
+          files: ${{ steps.assets.outputs.files }}
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
