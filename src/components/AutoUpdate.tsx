@@ -190,16 +190,27 @@ export function AutoUpdate() {
     };
   }, [updateInfo.githubRepo, updateInfo.updateChannel]);
 
-  // Auto-check on tab mount (or when the cadence becomes due). This
-  // is the "on first run / schedule" behavior — silent: it doesn't
-  // show a spinner, it just updates store state so the user sees
-  // "v1.5.0 available" inline if there's a new release.
-  //
-  // Also fires when the user toggles the channel — switching from
-  // stable → beta shouldn't require waiting for the cadence.
+  // Notify the Electron tray when update availability changes.
+  useEffect(() => {
+    if (window.callerflash?.tray?.setUpdateAvailable) {
+      window.callerflash.tray.setUpdateAvailable(
+        updateInfo.updateAvailable ? updateInfo.latestVersion : null
+      );
+    }
+  }, [updateInfo.updateAvailable, updateInfo.latestVersion]);
+
+  // Auto-check on tab mount — ALWAYS run on first load regardless of
+  // last-checked time, so the user sees updates immediately when they
+  // open the app. After the first check, subsequent checks respect
+  // the frequency interval (daily/weekly/monthly).
+  const hasCheckedRef = useState({ current: false })[0];
   useEffect(() => {
     if (phase !== 'idle') return;
-    if (!shouldAutoCheck(updateInfo.lastChecked, updateInfo.updateCheckFrequency)) return;
+    if (hasCheckedRef.current) {
+      // Subsequent channel/frequency changes: respect the interval.
+      if (!shouldAutoCheck(updateInfo.lastChecked, updateInfo.updateCheckFrequency)) return;
+    }
+    hasCheckedRef.current = true;
     handleCheckAndDownload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateInfo.updateCheckFrequency, updateInfo.updateChannel]);
@@ -558,27 +569,14 @@ export function AutoUpdate() {
             Releases
             <ExternalLink className="w-3 h-3" />
           </button>
-          {updateInfo.updateAvailable ? (
-            <button
-              onClick={handleInstall}
-              disabled={isBusy}
-              className="flex items-center gap-2 px-3.5 py-1.5 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors border border-win-success/30 disabled:opacity-50"
-            >
-              <Download className={`w-4 h-4 ${phase === 'downloading' || phase === 'installing' ? 'animate-spin' : ''}`} />
-              {phase === 'downloading' ? 'Downloading…'
-                : phase === 'installing' ? 'Installing…'
-                : `Install v${updateInfo.latestVersion}`}
-            </button>
-          ) : (
-            <button
-              onClick={handleCheckAndDownload}
-              disabled={isBusy}
-              className="flex items-center gap-2 px-3.5 py-1.5 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${phase === 'checking' ? 'animate-spin' : ''}`} />
-              {phase === 'checking' ? 'Checking…' : 'Check for Updates'}
-            </button>
-          )}
+          <button
+            onClick={handleCheckAndDownload}
+            disabled={isBusy}
+            className="flex items-center gap-2 px-3.5 py-1.5 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${phase === 'checking' ? 'animate-spin' : ''}`} />
+            {phase === 'checking' ? 'Checking…' : 'Check for Updates'}
+          </button>
         </div>
       </div>
 

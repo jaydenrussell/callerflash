@@ -23,6 +23,12 @@ contextBridge.exposeInMainWorld('callerflash', {
       ipcRenderer.on('window:hidden-to-tray', handler);
       return () => ipcRenderer.removeListener('window:hidden-to-tray', handler);
     },
+    /** Subscribe to tray "navigate to updates" click. Returns an unsubscribe fn. */
+    onNavigateToUpdate: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on('navigate-to-update', handler);
+      return () => ipcRenderer.removeListener('navigate-to-update', handler);
+    },
   },
 
   // ── Tray sync ───────────────────────────────────────────────────
@@ -30,6 +36,7 @@ contextBridge.exposeInMainWorld('callerflash', {
   // and "SIP: …" menu item reflect reality (Connected / Registered / Offline).
   tray: {
     setSipStatus: (status) => ipcRenderer.send('tray:set-sip-status', status),
+    setUpdateAvailable: (version) => ipcRenderer.send('tray:set-update-available', version),
   },
 
   // ── Secure credential storage (DPAPI) ───────────────────────────
