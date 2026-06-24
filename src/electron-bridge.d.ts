@@ -15,11 +15,15 @@ declare global {
     onRestoredFromTray: (callback: () => void) => () => void;
     /** Subscribe to tray→renderer "hidden" event. Returns an unsubscribe fn. */
     onHiddenToTray: (callback: () => void) => () => void;
+    /** Subscribe to tray "navigate to updates" click. Returns an unsubscribe fn. */
+    onNavigateToUpdate: (callback: () => void) => () => void;
   }
 
   interface CallerFlashTrayApi {
     /** Push the current SIP status label to main so the tray tooltip stays in sync. */
     setSipStatus: (status: string) => void;
+    /** Notify the tray that an update is available (or null to clear). */
+    setUpdateAvailable: (version: string | null) => void;
   }
 
   interface CallerFlashSafeStorageApi {
