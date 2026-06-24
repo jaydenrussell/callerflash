@@ -533,11 +533,6 @@ export function AutoUpdate() {
               title="Version Monotonicity"
               status="Refuses to install a release older than current"
             />
-            <SecurityRow
-              icon={<Shield className="w-4 h-4 text-win-accent" />}
-              title="Channel Release-Age Gate"
-              status={`Stable: 7-day soak • Beta: 1-day • Nightly: 0`}
-            />
             <details className="text-xs text-win-text-tertiary group">
               <summary className="cursor-pointer hover:text-win-text-secondary select-none">
                 How to verify a release manually

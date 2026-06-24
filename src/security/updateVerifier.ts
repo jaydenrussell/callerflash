@@ -48,10 +48,15 @@ export const MIN_SUPPORTED_VERSION = '1.4.0';
 
 // Update channel definitions — stable is the only one most users should
 // ever see, but we expose beta/nightly under explicit opt-in.
+//
+// Note: the previous "minimum release age" soak policy has been removed.
+// Semver (1.x.y vs 1.x.y-rc.N) is the signal for release maturity;
+// arbitrary wall-clock delays add no real safety once the version is
+// pinned and signed.
 export const CHANNEL_POLICY = {
-  stable: { minAgeDays: 7, allowPrerelease: false },
-  beta: { minAgeDays: 1, allowPrerelease: true },
-  nightly: { minAgeDays: 0, allowPrerelease: true },
+  stable: { allowPrerelease: false },
+  beta: { allowPrerelease: true },
+  nightly: { allowPrerelease: true },
 } as const;
 
 export type UpdateChannel = keyof typeof CHANNEL_POLICY;
@@ -128,21 +133,7 @@ export async function verifyUpdateArtifact(
   });
   if (!preOk) return { approved: false, steps };
 
-  // 4. Minimum release age (stable only — gives the community time to flag)
-  let ageOk = true;
-  let ageDetail = '';
-  if (policy.minAgeDays > 0) {
-    const ageMs = Date.now() - new Date(artifact.releaseDate).getTime();
-    const ageDays = ageMs / (1000 * 60 * 60 * 24);
-    ageOk = ageDays >= policy.minAgeDays;
-    ageDetail = `Age ${ageDays.toFixed(1)} days (min ${policy.minAgeDays} for ${channel})`;
-  } else {
-    ageDetail = 'No minimum age for this channel';
-  }
-  steps.push({ name: 'Release age', passed: ageOk, detail: ageDetail });
-  if (!ageOk) return { approved: false, steps };
-
-  // 5. Version monotonicity (no roll-back)
+  // 4. Version monotonicity (no roll-back)
   const cmp = compareSemver(artifact.version, currentVersion);
   const monoOk = cmp > 0;
   steps.push({

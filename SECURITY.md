@@ -24,7 +24,7 @@ SIP registration with a third-party VoIP provider. Its threat surface is:
 | Clipboard contents | Cross-app injection via auto-copy | Strict digit-only sanitizer |
 | Renderer process | XSS / RCE | Strict CSP, sandboxed `BrowserWindow`, `nodeIntegration: false`, `contextIsolation: true` |
 | External links | Accidental RCE via `javascript:` URIs | URL allow-list + `shell.openExternal` only |
-| Registration spam | Attacker-controlled SIP server | Min release age per channel, version monotonicity |
+| Registration spam | Attacker-controlled SIP server | Version monotonicity + pinned Ed25519 key |
 
 ---
 
@@ -82,9 +82,6 @@ openssl pkeyutl -verify -rawin -pubin \
 * **Version monotonicity** — never installs a release older than the
   currently running version. Defeats roll-back attacks.
 * **Minimum supported version** — ancient versions cannot skip updates.
-* **Release-age gate** — `stable` requires 7-day soak, `beta` 1-day,
-  `nightly` 0. Gives the community time to flag a malicious or broken
-  release before it auto-reaches users.
 * **No redirects** — the GitHub API host is pinned in code, and the
   download URL is validated against the host allow-list before fetch.
 
