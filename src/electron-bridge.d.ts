@@ -81,7 +81,7 @@ declare global {
   interface CallerFlashUpdaterApi {
     check: () => Promise<CallerFlashUpdaterStatus>;
     download: () => Promise<CallerFlashUpdaterStatus>;
-    install: () => void;
+    install: (downloadUrl?: string) => void;
     setChannel: (channel: UpdateChannel) => void;
     onStatus: (callback: (data: CallerFlashUpdaterStatus) => void) => () => void;
   }
