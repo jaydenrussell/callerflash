@@ -406,7 +406,9 @@ export function AutoUpdate() {
       setDownloadedBlobUrl(null);
     }
 
-    const fileName = artifact.downloadUrl.split('/').pop() || `CallerFlash-${artifact.version}.exe`;
+    let fileName: string;
+    try { fileName = decodeURIComponent(new URL(artifact.downloadUrl).pathname.split('/').pop() || ''); } catch { fileName = ''; }
+    if (!fileName || !fileName.includes('.')) fileName = `CallerFlash-${artifact.version}.exe`;
     setDownloadedFileName(fileName);
 
     try {
