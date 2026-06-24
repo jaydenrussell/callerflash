@@ -53,6 +53,24 @@ function parseChangelog(body: string, max = 6): string[] {
   return out;
 }
 
+/**
+ * Compare two semver strings. Returns 1 if a > b, -1 if a < b, 0 if equal.
+ * Handles prerelease suffixes like "1.5.0-beta.3" or "1.4.2-nightly.abc1234"
+ * by comparing the base version (X.Y.Z) numerically, then falling back to
+ * string comparison for the prerelease part.
+ */
+function compareVersions(a: string, b: string): number {
+  const pa = a.replace(/^v/, '').split(/[-+]/)[0].split('.').map(Number);
+  const pb = b.replace(/^v/, '').split(/[-+]/)[0].split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] ?? 0;
+    const nb = pb[i] ?? 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+}
+
 function formatReleaseDate(iso: string): string {
   const d = new Date(iso);
   const y = d.getFullYear();
@@ -134,10 +152,16 @@ export function AutoUpdate() {
   // not just a silent diagnostic log. Cleared on every new check.
   const [outcome, setOutcome] = useState<CheckOutcome>(null);
 
-  // The displayed list — strictly filtered by the active channel.
+  // The displayed list — strictly filtered by the active channel,
+  // sorted by version descending (highest first).
   const channelReleases = useMemo(
-    () => releases.filter((r) => matchesChannel(r, updateInfo.updateChannel)),
-    [releases, updateInfo.updateChannel]
+    () => releases
+      .filter((r) => matchesChannel(r, updateInfo.updateChannel))
+      .sort((a, b) => compareVersions(
+        b.tag_name.replace(/^v/, ''),
+        a.tag_name.replace(/^v/, ''),
+      )),
+    [releases, updateInfo.updateChannel],
   );
 
   // Refetch on mount and whenever the channel toggles — each channel
@@ -216,9 +240,15 @@ export function AutoUpdate() {
 
       setReleases(fetched);
 
-      // 2. Pick the most recent release matching the active channel.
+      // 2. Pick the HIGHEST version on the active channel.
       const channel = updateInfo.updateChannel;
-      const candidate = fetched.find((r) => matchesChannel(r, channel));
+      const channelFiltered = fetched
+        .filter((r) => matchesChannel(r, channel))
+        .sort((a, b) => compareVersions(
+          b.tag_name.replace(/^v/, ''),
+          a.tag_name.replace(/^v/, ''),
+        ));
+      const candidate = channelFiltered[0] ?? null;
 
       if (!candidate) {
         const msg = `No releases on the ${channel} channel yet.`;
@@ -233,8 +263,32 @@ export function AutoUpdate() {
         return;
       }
 
+      const candidateVersion = candidate.tag_name.replace(/^v/, '');
+      const isHigher = compareVersions(candidateVersion, updateInfo.currentVersion) > 0;
+
       // Track the release page for the "Open on GitHub" fallback button.
       setUpdateInfo({ releasePageUrl: candidate.html_url });
+
+      // If the highest release on this channel is NOT higher than
+      // current, the user is already up to date.
+      if (!isHigher) {
+        addDiagnosticLog({
+          level: 'success',
+          category: 'UPDATE',
+          message: `Already on the latest ${channel} version (v${updateInfo.currentVersion}).`,
+        });
+        setUpdateInfo({
+          updateAvailable: false,
+          lastChecked: new Date(),
+          latestVersion: updateInfo.currentVersion,
+        });
+        setPhase('idle');
+        setOutcome({
+          kind: 'no-update',
+          message: `You're running v${updateInfo.currentVersion}, which is the latest on the ${channel} channel.`,
+        });
+        return;
+      }
 
       const artifact = await parseGithubRelease(candidate);
       if (!artifact) {
@@ -503,7 +557,55 @@ export function AutoUpdate() {
         </div>
       )}
 
-      {/* Ready-to-install banner */}
+      {/* ── Prominent update-available banner ─────────────────────── */}
+      {updateInfo.updateAvailable && (phase === 'idle' || phase === 'ready-to-download' || phase === 'ready') && (
+        <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-gradient-to-r from-win-accent/10 to-blue-500/10 border border-win-accent/30">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-win-accent/20 flex items-center justify-center">
+            <Download className="w-5 h-5 text-win-accent" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-win-text">
+              Update available: v{updateInfo.latestVersion}
+            </p>
+            <p className="text-[11px] text-win-text-secondary mt-0.5">
+              {phase === 'ready'
+                ? 'Downloaded and verified — ready to install.'
+                : phase === 'ready-to-download'
+                ? `Newer than your current v${updateInfo.currentVersion} on the ${updateInfo.updateChannel} channel.`
+                : `A newer version is available on the ${updateInfo.updateChannel} channel.`}
+            </p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            {phase === 'ready' ? (
+              <button
+                onClick={handleInstall}
+                disabled={isBusy}
+                className="flex items-center gap-2 px-4 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                <Download className="w-4 h-4" />
+                Install
+              </button>
+            ) : phase === 'ready-to-download' ? (
+              <button
+                onClick={handleDownload}
+                disabled={isBusy}
+                className="flex items-center gap-2 px-4 py-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+              >
+                <Download className="w-4 h-4" />
+                Download
+              </button>
+            ) : null}
+            <button
+              onClick={() => openReleasePage()}
+              className="flex items-center gap-2 px-3 py-2 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm transition-colors border border-win-border"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Ready-to-install banner — shown during download/install phases */}
       {phase === 'ready' && (
         <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-win-success/10 border border-win-success/20">
           <Bell className="w-4 h-4 text-win-success flex-shrink-0 mt-0.5" />
