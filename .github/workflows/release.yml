@@ -155,19 +155,30 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ needs.route.outputs.version }}"
-          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-            # Stable/beta: valid semver, use npm version
-            npm version "$VERSION" --no-git-tag-version --allow-same-version
-          else
-            # Nightly: not valid semver. Write the datestamp directly
-            # to package.json so electron-builder uses it as the version
-            # in the output filename (CallerFlash-nightly-20260624.exe).
+          CHANNEL="${{ needs.route.outputs.channel }}"
+
+          if [[ "$CHANNEL" == "nightly" ]]; then
+            # Nightly: version is the datestamp (nightly-20260624).
+            # Write directly to package.json — not valid semver for npm version.
             node -e "
               const fs = require('fs');
               const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
               pkg.version = '${VERSION}';
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
             "
+          elif [[ "$CHANNEL" == "beta" ]]; then
+            # Beta: set version to beta-1.5.0-beta.28 so the artifact
+            # filename becomes CallerFlash-beta-1.5.0-beta.28.exe
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              pkg.version = 'beta-${VERSION}';
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+          else
+            # Stable: valid semver, use npm version. Filename will be
+            # CallerFlash-1.5.0.exe (no channel prefix).
+            npm version "$VERSION" --no-git-tag-version --allow-same-version
           fi
           echo "BUILD_VERSION=${VERSION}" >> $GITHUB_ENV
 
