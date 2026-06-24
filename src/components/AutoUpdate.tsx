@@ -151,6 +151,11 @@ export function AutoUpdate() {
   // Captures the failure reason so the user sees WHY nothing happened,
   // not just a silent diagnostic log. Cleared on every new check.
   const [outcome, setOutcome] = useState<CheckOutcome>(null);
+  // Persist the verified artifact's download URL + the downloaded blob
+  // URL so the install step can trigger a real file download.
+  const [artifactUrl, setArtifactUrl] = useState<string | null>(null);
+  const [downloadedBlobUrl, setDownloadedBlobUrl] = useState<string | null>(null);
+  const [downloadedFileName, setDownloadedFileName] = useState<string>('');
 
   // The displayed list — strictly filtered by the active channel,
   // sorted by version descending (highest first).
@@ -366,7 +371,7 @@ export function AutoUpdate() {
       // park at 'ready-to-download' so the user sees a Download button
       // and stays in control.
       if (updateInfo.autoDownload) {
-        await runDownload(artifact);
+        await runDownload({ version: artifact.version, downloadUrl: artifact.downloadUrl });
       } else {
         setPhase('ready-to-download');
       }
@@ -388,45 +393,73 @@ export function AutoUpdate() {
   };
 
   /**
-   * Perform the simulated download. In production this is
-   * electron-updater downloading the binary + re-verifying the
-   * signature after transfer; here we animate the progress bar.
+   * Real download with streaming progress. Fetches the verified binary
+   * from GitHub's CDN, tracks progress via ReadableStream, and stores
+   * the blob so the install step can trigger a file save.
    */
-  const runDownload = async (artifact: { version: string }) => {
+  const runDownload = async (artifact: { version: string; downloadUrl: string }) => {
     setPhase('downloading');
     setUpdateInfo({ isDownloading: true, downloadProgress: 0 });
+    setArtifactUrl(artifact.downloadUrl);
 
-    await new Promise<void>((resolve) => {
-      let pct = 0;
-      const tick = () => {
-        pct = Math.min(pct + 8 + Math.random() * 12, 100);
-        setUpdateInfo({ downloadProgress: pct });
-        if (pct >= 100) resolve();
-        else setTimeout(tick, 200);
-      };
-      setTimeout(tick, 200);
-    });
+    // Clean up any previous blob URL.
+    if (downloadedBlobUrl) {
+      try { URL.revokeObjectURL(downloadedBlobUrl); } catch { /* noop */ }
+      setDownloadedBlobUrl(null);
+    }
 
-    setUpdateInfo({ isDownloading: false, downloadProgress: 100 });
-    setPhase('ready');
-    addDiagnosticLog({
-      level: 'success',
-      category: 'UPDATE',
-      message: `Update v${artifact.version} downloaded and verified — ready to install`,
-    });
+    const fileName = artifact.downloadUrl.split('/').pop() || `CallerFlash-${artifact.version}.exe`;
+    setDownloadedFileName(fileName);
+
+    try {
+      const response = await fetch(artifact.downloadUrl);
+      if (!response.ok) throw new Error(`Download failed: HTTP ${response.status}`);
+
+      const contentLength = Number(response.headers.get('content-length') || '0');
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('ReadableStream not supported');
+
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (contentLength > 0) {
+          setUpdateInfo({ downloadProgress: (received / contentLength) * 100 });
+        }
+      }
+
+      const blob = new Blob(chunks as BlobPart[]);
+      const url = URL.createObjectURL(blob);
+      setDownloadedBlobUrl(url);
+      setUpdateInfo({ isDownloading: false, downloadProgress: 100 });
+      setPhase('ready');
+      addDiagnosticLog({
+        level: 'success',
+        category: 'UPDATE',
+        message: `Update v${artifact.version} downloaded (${(received / 1048576).toFixed(1)} MB) — ready to install`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Download failed';
+      addDiagnosticLog({ level: 'error', category: 'UPDATE', message: msg });
+      setUpdateInfo({ isDownloading: false, downloadProgress: 0 });
+      setPhase('ready-to-download');
+    }
   };
 
-  /** Manual download (when autoUpdate is off and user clicks Download). */
+  /** Manual download (when autoDownload is off and user clicks Download). */
   const handleDownload = async () => {
-    if (phase !== 'ready-to-download') return;
-    const latest = updateInfo.latestVersion;
-    await runDownload({ version: latest });
+    if (phase !== 'ready-to-download' || !artifactUrl) return;
+    await runDownload({ version: updateInfo.latestVersion, downloadUrl: artifactUrl });
   };
 
   /**
-   * Apply the downloaded update. In the production Electron build this
-   * calls electron-updater's `quitAndInstall()` (which restarts the
-   * app to apply the patch). In the demo we simulate.
+   * Apply the downloaded update.
+   *   • Electron → IPC to quit and install (electron-updater)
+   *   • Web      → triggers a file save of the downloaded .exe
    */
   const handleInstall = () => {
     setPhase('installing');
@@ -437,6 +470,26 @@ export function AutoUpdate() {
       message: `Installing update v${updateInfo.latestVersion}…`,
     });
 
+    // Electron: use the IPC updater bridge to quit and install.
+    if (window.callerflash?.updater?.install) {
+      window.callerflash.updater.install();
+      return;
+    }
+
+    // Web: trigger a real file download of the .exe.
+    if (downloadedBlobUrl) {
+      const a = document.createElement('a');
+      a.href = downloadedBlobUrl;
+      a.download = downloadedFileName || `CallerFlash-${updateInfo.latestVersion}.exe`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else if (artifactUrl) {
+      // Fallback: direct link if blob isn't available.
+      window.open(artifactUrl, '_blank');
+    }
+
+    // Mark as "installed" (in web the user runs the .exe manually).
     setTimeout(() => {
       setUpdateInfo({
         isInstalling: false,
@@ -448,9 +501,9 @@ export function AutoUpdate() {
       addDiagnosticLog({
         level: 'success',
         category: 'UPDATE',
-        message: `Update installed successfully! Now running v${updateInfo.latestVersion}`,
+        message: `Update v${updateInfo.latestVersion} installer saved — run it to complete the update.`,
       });
-    }, 1500);
+    }, 1000);
   };
 
   const openUrl = (url: string) => {
@@ -595,12 +648,6 @@ export function AutoUpdate() {
                 Download
               </button>
             ) : null}
-            <button
-              onClick={() => openReleasePage()}
-              className="flex items-center gap-2 px-3 py-2 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm transition-colors border border-win-border"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
       )}
