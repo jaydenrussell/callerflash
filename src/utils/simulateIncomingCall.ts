@@ -43,9 +43,17 @@ function showSeparateToast(data: {
   };
 }) {
   // ── Electron: use the dedicated toast BrowserWindow via IPC ────
-  if (typeof window !== 'undefined' && window.callerflash?.toast?.show) {
-    window.callerflash.toast.show(data);
-    return;
+  if (typeof window !== 'undefined') {
+    // We always trigger a native OS notification as a reliable fallback
+    // that works flawlessly on Windows/Linux even when backgrounded.
+    if (window.callerflash?.notify?.show) {
+      window.callerflash.notify.show('Incoming Call', `${data.callerNumber}${data.callerName ? ` - ${data.callerName}` : ''}`);
+    }
+    
+    if (window.callerflash?.toast?.show) {
+      window.callerflash.toast.show(data);
+      return;
+    }
   }
 
   // ── Web: open a real popup window ─────────────────────────────

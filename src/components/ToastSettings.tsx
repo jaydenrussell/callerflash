@@ -1,5 +1,5 @@
 import {
-  Palette, Bell, RotateCcw,
+  Palette, RotateCcw,
   Clock, PhoneIncoming, Undo2
 } from 'lucide-react';
 import { useAppStore, type ToastConfig } from '../store/useAppStore';
@@ -90,36 +90,37 @@ export function ToastSettings() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {/* Appearance — combines typography & colors */}
-        <Section icon={<Palette className="w-4 h-4" />} title="Appearance" desc="Fonts, colors, and shape">
+        {/* Appearance & Behavior */}
+        <Section icon={<Palette className="w-4 h-4" />} title="Appearance & Behavior" desc="Look, feel, and features">
           <div className="space-y-3">
-            <SliderField
-              label="Font Size"
-              value={toastConfig.fontSize}
-              min={10}
-              max={28}
-              step={1}
-              unit="px"
-              onChange={(v) => update({ fontSize: v })}
-            />
-
-            <InputField label="Font Family">
-              <div className="relative">
-                <select
-                  value={toastConfig.fontFamily}
-                  onChange={(e) => update({ fontFamily: e.target.value })}
-                  className="w-full px-3 py-2 bg-win-card border border-win-border rounded-lg text-sm text-win-text focus:outline-none focus:border-win-accent transition-colors appearance-none pr-10"
-                  style={{ fontFamily: toastConfig.fontFamily }}
-                >
-                  {fontFamilies.map((font) => (
-                    <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>
-                  ))}
-                </select>
-                <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-win-text-tertiary pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </div>
-            </InputField>
+            <div className="grid grid-cols-2 gap-3">
+              <SliderField
+                label="Font Size"
+                value={toastConfig.fontSize}
+                min={10}
+                max={28}
+                step={1}
+                unit="px"
+                onChange={(v) => update({ fontSize: v })}
+              />
+              <InputField label="Font Family">
+                <div className="relative">
+                  <select
+                    value={toastConfig.fontFamily}
+                    onChange={(e) => update({ fontFamily: e.target.value })}
+                    className="w-full px-2 py-1 bg-win-card border border-win-border rounded-lg text-xs text-win-text focus:outline-none focus:border-win-accent transition-colors appearance-none pr-8"
+                    style={{ fontFamily: toastConfig.fontFamily }}
+                  >
+                    {fontFamilies.map((font) => (
+                      <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>
+                    ))}
+                  </select>
+                  <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-win-text-tertiary pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </div>
+              </InputField>
+            </div>
 
             <div className="grid grid-cols-3 gap-2">
               <ColorField
@@ -139,9 +140,9 @@ export function ToastSettings() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <SliderField
-                label="Corner Radius"
+                label="Radius"
                 value={toastConfig.borderRadius}
                 min={0}
                 max={24}
@@ -158,17 +159,39 @@ export function ToastSettings() {
                 unit="%"
                 onChange={(v) => update({ opacity: v })}
               />
+              <SliderField
+                label="Width"
+                value={toastConfig.maxWidth}
+                min={300}
+                max={600}
+                step={10}
+                unit="px"
+                onChange={(v) => update({ maxWidth: v })}
+              />
             </div>
-
-            <SliderField
-              label="Max Width"
-              value={toastConfig.maxWidth}
-              min={300}
-              max={600}
-              step={10}
-              unit="px"
-              onChange={(v) => update({ maxWidth: v })}
-            />
+            
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <ToggleField
+                label="Sound enabled"
+                value={toastConfig.soundEnabled}
+                onChange={(v) => update({ soundEnabled: v })}
+              />
+              <ToggleField
+                label="Auto-copy number"
+                value={toastConfig.autoCopyToClipboard}
+                onChange={(v) => update({ autoCopyToClipboard: v })}
+              />
+              <ToggleField
+                label="Show caller name"
+                value={toastConfig.showCallerName}
+                onChange={(v) => update({ showCallerName: v })}
+              />
+              <ToggleField
+                label="Show timestamp"
+                value={toastConfig.showTimestamp}
+                onChange={(v) => update({ showTimestamp: v })}
+              />
+            </div>
           </div>
         </Section>
 
@@ -209,7 +232,7 @@ export function ToastSettings() {
                       update({ position: pos.value as any });
                       setToastDragPosition(null);
                     }}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                       toastConfig.position === pos.value && !toastDragPosition
                         ? 'bg-win-accent/20 text-win-accent border border-win-accent/30'
                         : 'bg-win-card text-win-text-secondary hover:bg-win-surface-hover border border-win-border/50'
@@ -223,32 +246,6 @@ export function ToastSettings() {
                 Drag any toast to set a custom position — saved for future calls.
               </p>
             </div>
-          </div>
-        </Section>
-
-        {/* Behavior */}
-        <Section icon={<Bell className="w-4 h-4" />} title="Behavior" desc="Sound, clipboard, and display options">
-          <div className="space-y-2">
-            <ToggleField
-              label="Sound enabled"
-              value={toastConfig.soundEnabled}
-              onChange={(v) => update({ soundEnabled: v })}
-            />
-            <ToggleField
-              label="Auto-copy number to clipboard"
-              value={toastConfig.autoCopyToClipboard}
-              onChange={(v) => update({ autoCopyToClipboard: v })}
-            />
-            <ToggleField
-              label="Show caller name"
-              value={toastConfig.showCallerName}
-              onChange={(v) => update({ showCallerName: v })}
-            />
-            <ToggleField
-              label="Show timestamp"
-              value={toastConfig.showTimestamp}
-              onChange={(v) => update({ showTimestamp: v })}
-            />
           </div>
         </Section>
       </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
-  Server, Lock, Globe, Headphones, Save, RotateCcw,
-  ChevronDown, Shield, Wifi, Eye, EyeOff, ShieldCheck
+  Server, Lock, Save, RotateCcw,
+  ChevronDown, Eye, EyeOff, ShieldCheck
 } from 'lucide-react';
 import { useAppStore, type SipConfig } from '../store/useAppStore';
 import { sanitizeSipServer } from '../security/secretRedactor';
@@ -124,8 +124,6 @@ const sipProviders: ProviderGroup[] = [
 const knownServerValues = new Set(
   sipProviders.flatMap((g) => g.options.map((o) => o.value)).filter((v) => v !== '__custom__')
 );
-
-const codecs = ['G.711u', 'G.711a', 'G.729', 'GSM', 'iLBC', 'Opus', 'Speex'];
 
 export function SipSettings() {
   const {
@@ -297,16 +295,27 @@ export function SipSettings() {
               </InputField>
             </div>
 
-            <InputField label="Registration Expiry" hint="seconds">
-              <input
-                type="number"
-                min={30}
-                max={3600}
-                value={localConfig.registerExpiry}
-                onChange={(e) => updateLocal({ registerExpiry: parseInt(e.target.value) || 300 })}
-                className="w-full px-3 py-2 bg-win-card border border-win-border rounded-lg text-sm text-win-text focus:outline-none focus:border-win-accent transition-colors"
-              />
-            </InputField>
+            <div className="grid grid-cols-2 gap-2">
+              <InputField label="Registration Expiry" hint="seconds">
+                <input
+                  type="number"
+                  min={30}
+                  max={3600}
+                  value={localConfig.registerExpiry}
+                  onChange={(e) => updateLocal({ registerExpiry: parseInt(e.target.value) || 300 })}
+                  className="w-full px-3 py-2 bg-win-card border border-win-border rounded-lg text-sm text-win-text focus:outline-none focus:border-win-accent transition-colors"
+                />
+              </InputField>
+              <InputField label="STUN Server">
+                <input
+                  type="text"
+                  value={localConfig.stunServer}
+                  onChange={(e) => updateLocal({ stunServer: e.target.value })}
+                  placeholder="stun.l.google.com"
+                  className="w-full px-3 py-2 bg-win-card border border-win-border rounded-lg text-sm text-win-text font-mono placeholder:text-win-text-tertiary focus:outline-none focus:border-win-accent transition-colors"
+                />
+              </InputField>
+            </div>
           </div>
         </SettingsSection>
 
@@ -368,86 +377,6 @@ export function SipSettings() {
               <p className="text-[11px] text-win-text-secondary leading-snug">
                 Server inputs are sanitized. Passwords encrypted at rest via DPAPI.
               </p>
-            </div>
-          </div>
-        </SettingsSection>
-
-        {/* Audio / Codec */}
-        <SettingsSection
-          icon={<Headphones className="w-4 h-4" />}
-          title="Audio &amp; Codec"
-          description="Preferred audio codec for calls"
-        >
-          <div className="space-y-3">
-            <InputField label="Preferred Codec">
-              <div className="relative">
-                <select
-                  value={localConfig.codec}
-                  onChange={(e) => updateLocal({ codec: e.target.value })}
-                  className="w-full px-3 py-2 bg-win-card border border-win-border rounded-lg text-sm text-win-text focus:outline-none focus:border-win-accent transition-colors appearance-none pr-10"
-                >
-                  {codecs.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-win-text-tertiary pointer-events-none" />
-              </div>
-            </InputField>
-            <div className="bg-win-card rounded-lg p-2.5 border border-win-border/50">
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-win-text-tertiary">Bandwidth</span>
-                  <span className="text-win-text-secondary">64 kbps</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-win-text-tertiary">Quality</span>
-                  <span className="text-win-success">Excellent</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-win-text-tertiary">Latency</span>
-                  <span className="text-win-text-secondary">~20ms</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </SettingsSection>
-
-        {/* NAT / STUN */}
-        <SettingsSection
-          icon={<Globe className="w-4 h-4" />}
-          title="NAT Traversal"
-          description="STUN server for NAT detection"
-        >
-          <div className="space-y-3">
-            <InputField label="STUN Server">
-              <input
-                type="text"
-                value={localConfig.stunServer}
-                onChange={(e) => updateLocal({ stunServer: e.target.value })}
-                placeholder="stun.l.google.com"
-                className="w-full px-3 py-2 bg-win-card border border-win-border rounded-lg text-sm text-win-text font-mono placeholder:text-win-text-tertiary focus:outline-none focus:border-win-accent transition-colors"
-              />
-            </InputField>
-
-            <div className="bg-win-card rounded-lg p-2.5 border border-win-border/50">
-              <div className="space-y-1 text-xs">
-                <div className="flex items-center gap-2">
-                  <Shield className="w-3 h-3 text-win-success" />
-                  <span className="text-win-text-secondary">Symmetric NAT detected</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Wifi className="w-3 h-3 text-win-success" />
-                  <span className="text-win-text-secondary">STUN binding successful</span>
-                </div>
-                <div className="flex justify-between mt-1.5">
-                  <span className="text-win-text-tertiary">Public IP</span>
-                  <span className="text-win-text-secondary font-mono">203.0.113.x</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-win-text-tertiary">Mapped Port</span>
-                  <span className="text-win-text-secondary font-mono">5060</span>
-                </div>
-              </div>
             </div>
           </div>
         </SettingsSection>

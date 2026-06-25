@@ -3,7 +3,7 @@ import {
   Download, RefreshCw,
   Shield, GitBranch,
   ExternalLink, GitCommit, ChevronDown,
-  Check, X as XIcon, ShieldCheck, FileLock, Key, AlertCircle
+  Check, X as XIcon, ShieldCheck, AlertCircle
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -812,54 +812,8 @@ export function AutoUpdate() {
 
         </div>
 
-        <div className="bg-win-surface rounded-xl border border-win-border p-3">
-          <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-win-success" />
-            Security
-          </h3>
-          <div className="space-y-1.5">
-            <SecurityRow
-              icon={<FileLock className="w-3.5 h-3.5 text-win-accent" />}
-              title="Authenticode Code Signing"
-            />
-            <SecurityRow
-              icon={<ShieldCheck className="w-3.5 h-3.5 text-win-success" />}
-              title="SHA-256 Checksum"
-            />
-            <SecurityRow
-              icon={<Key className="w-3.5 h-3.5 text-win-warning" />}
-              title="Ed25519 Detached Signature"
-            />
-            <SecurityRow
-              icon={<Shield className="w-3.5 h-3.5 text-win-accent" />}
-              title="HTTPS + Host Allow-list"
-            />
-            <SecurityRow
-              icon={<Shield className="w-3.5 h-3.5 text-win-accent" />}
-              title="Version Monotonicity"
-            />
-            <details className="text-[11px] text-win-text-tertiary group mt-1">
-              <summary className="cursor-pointer hover:text-win-text-secondary select-none">
-                How to verify a release manually
-              </summary>
-              <pre className="mt-1.5 p-2.5 bg-win-card rounded-lg border border-win-border/50 overflow-x-auto leading-relaxed text-[10px]">{`# 1. Download the .sig and SHA256SUMS from the GitHub release
-curl -LO https://github.com/.../CallerFlash-Setup-1.5.0.exe.sig
-curl -LO https://github.com/.../SHA256SUMS
-
-# 2. Verify the detached signature against the pinned key
-openssl pkeyutl -verify -rawin -pubin \\
-  -inkey <(echo $CALLERFLASH_RELEASE_PUB | base64 -d) \\
-  -in SHA256SUMS \\
-  -sigfile CallerFlash-Setup-1.5.0.exe.sig
-
-# 3. Verify the SHA-256 matches what you downloaded
-sha256sum -c SHA256SUMS --ignore-missing`}</pre>
-            </details>
-          </div>
-        </div>
-
         {/* Release History — strictly filtered to the active channel */}
-        <div className="bg-win-surface rounded-xl border border-win-border p-3 lg:col-span-2 flex flex-col min-h-0">
+        <div className="bg-win-surface rounded-xl border border-win-border p-3 flex flex-col min-h-0 max-h-[300px]">
           <div className="flex items-center justify-between mb-2 flex-shrink-0">
             <h3 className="text-sm font-semibold text-win-text flex items-center gap-2">
               <GitCommit className="w-4 h-4 text-win-accent" />
@@ -926,21 +880,6 @@ sha256sum -c SHA256SUMS --ignore-missing`}</pre>
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function SecurityRow({
-  icon,
-  title,
-}: {
-  icon: React.ReactNode;
-  title: string;
-}) {
-  return (
-    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-win-card border border-win-border/50">
-      <span className="flex-shrink-0">{icon}</span>
-      <p className="text-xs font-medium text-win-text">{title}</p>
     </div>
   );
 }

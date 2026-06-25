@@ -75,8 +75,7 @@ export function Dashboard() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={triggerTestCall}
-            disabled={!sipConnected}
-            className="flex items-center gap-2 px-3 py-1.5 bg-win-accent/15 hover:bg-win-accent/25 text-win-accent rounded-lg text-xs font-medium transition-colors border border-win-accent/20 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-3 py-1.5 bg-win-accent/15 hover:bg-win-accent/25 text-win-accent rounded-lg text-xs font-medium transition-colors border border-win-accent/20"
           >
             <PhoneIncoming className="w-3.5 h-3.5" />
             Simulate Call
@@ -182,7 +181,6 @@ export function Dashboard() {
               icon={<PhoneIncoming className="w-3.5 h-3.5" />}
               label="Simulate call"
               onClick={triggerTestCall}
-              disabled={!sipConnected}
             />
             <QuickAction
               icon={<Activity className="w-3.5 h-3.5" />}
