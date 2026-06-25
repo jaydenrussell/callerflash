@@ -3,6 +3,7 @@ import {
   Code, BookOpen, Zap, GitBranch
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { formatVersion } from '../utils/formatVersion';
 
 export function About() {
   const { updateInfo } = useAppStore();
@@ -13,7 +14,7 @@ export function About() {
       <div>
         <h2 className="text-xl font-bold text-win-text">About</h2>
         <p className="text-xs text-win-text-secondary mt-0.5">
-          CallerFlash v{updateInfo.currentVersion} · MIT License
+          CallerFlash {formatVersion(updateInfo.currentVersion)} · MIT License
         </p>
       </div>
 

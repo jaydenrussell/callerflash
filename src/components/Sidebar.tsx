@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { useAppStore, type TabId } from '../store/useAppStore';
 import { cn } from '../utils/cn';
+import { formatVersion } from '../utils/formatVersion';
 
 const navItems: { id: TabId; label: string; icon: React.ComponentType<any> }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -174,7 +175,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
       {/* Version + single GitHub link (the only GitHub entry in the whole app) */}
       <div className="p-3 border-t border-win-border space-y-2">
         <div className="text-center">
-          <p className="text-xs text-win-text-tertiary truncate">v{updateInfo.currentVersion} • MIT</p>
+          <p className="text-xs text-win-text-tertiary truncate">{formatVersion(updateInfo.currentVersion)} • MIT</p>
         </div>
         <button
           onClick={() => openExternal(`${updateInfo.githubRepo}`)}

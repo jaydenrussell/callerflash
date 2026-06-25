@@ -12,6 +12,8 @@ import {
   type VerificationResult,
 } from '../security/updateVerifier';
 
+import { formatVersion } from '../utils/formatVersion';
+
 interface GithubRelease {
   tag_name: string;
   name: string;
@@ -570,13 +572,7 @@ export function AutoUpdate() {
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-win-text">Updates</h2>
           <p className="text-xs text-win-text-secondary mt-0.5">
-            v{updateInfo.currentVersion} · <span className="capitalize">{updateInfo.updateChannel}</span> channel
-            {updateInfo.updateAvailable && phase !== 'installing' && (
-              <> · v{updateInfo.latestVersion} available</>
-            )}
-            {phase === 'installing' && (
-              <> · installing…</>
-            )}
+            {formatVersion(updateInfo.currentVersion)} · <span className="capitalize">{updateInfo.updateChannel}</span> channel
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -844,7 +840,7 @@ export function AutoUpdate() {
                     <div className="flex items-baseline justify-between gap-3 mb-1">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-xs font-bold text-win-text truncate">
-                          {release.tag_name}
+                          {formatVersion(release.tag_name)}
                         </span>
                         {isCurrent && (
                           <span className="px-1.5 py-0.5 bg-win-accent/15 text-win-accent rounded text-[10px] font-semibold flex-shrink-0">
