@@ -77,7 +77,7 @@ declare global {
   type UpdateChannel = 'stable' | 'beta' | 'nightly';
 
   interface CallerFlashUpdaterStatus {
-    status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error' | 'noop';
+    status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error' | 'noop';
     message?: string;
     progress?: number;
   }

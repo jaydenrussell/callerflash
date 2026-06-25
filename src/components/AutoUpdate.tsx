@@ -224,6 +224,24 @@ export function AutoUpdate() {
     }
   }, [updateInfo.updateAvailable, updateInfo.latestVersion]);
 
+  // Listen for Electron main process updater progress.
+  useEffect(() => {
+    if (!window.callerflash?.updater?.onStatus) return;
+    return window.callerflash.updater.onStatus((status) => {
+      if (status.status === 'downloading') {
+        setPhase('downloading');
+        setUpdateInfo({ isDownloading: true, downloadProgress: status.progress || 0 });
+      } else if (status.status === 'installing') {
+        setPhase('installing');
+        setUpdateInfo({ isDownloading: false, isInstalling: true, downloadProgress: 100 });
+      } else if (status.status === 'error') {
+        setPhase('idle');
+        setUpdateInfo({ isDownloading: false, isInstalling: false });
+        addDiagnosticLog({ level: 'error', category: 'UPDATE', message: `Install failed: ${status.message}` });
+      }
+    });
+  }, [setUpdateInfo, addDiagnosticLog]);
+
   // Auto-check on tab mount — ALWAYS run on first load regardless of
   // last-checked time, so the user sees updates immediately when they
   // open the app. After the first check, subsequent checks respect
@@ -394,6 +412,7 @@ export function AutoUpdate() {
       });
 
       // Update store state so the UI reflects the verified version.
+      setArtifactUrl(artifact.downloadUrl);
       setUpdateInfo({
         latestVersion: artifact.version,
         updateAvailable: true,
@@ -432,9 +451,17 @@ export function AutoUpdate() {
    * the blob so the install step can trigger a file save.
    */
   const runDownload = async (artifact: { version: string; downloadUrl: string }) => {
+    setArtifactUrl(artifact.downloadUrl);
+
+    // In Electron, the main process handles the download directly when Install is clicked.
+    // We skip the in-memory Blob download here to avoid double-downloading and RAM waste.
+    if (window.callerflash?.platform?.isElectron) {
+      setPhase('idle');
+      return true;
+    }
+
     setPhase('downloading');
     setUpdateInfo({ isDownloading: true, downloadProgress: 0 });
-    setArtifactUrl(artifact.downloadUrl);
 
     // Clean up any previous blob URL.
     if (downloadedBlobUrl) {
@@ -504,8 +531,14 @@ export function AutoUpdate() {
     // Electron: pass the download URL to main process — it downloads,
     // saves, spawns the installer, and quits the app.
     if (window.callerflash?.updater?.install) {
-      const url = artifactUrl || `${updateInfo.releasePageUrl}`;
-      window.callerflash.updater.install(url);
+      if (!artifactUrl) {
+        addDiagnosticLog({ level: 'error', category: 'UPDATE', message: 'No valid installer URL found.' });
+        setPhase('idle');
+        setUpdateInfo({ isInstalling: false });
+        return;
+      }
+      // The main process will emit `updater:status` events which our useEffect below catches.
+      window.callerflash.updater.install(artifactUrl);
       return;
     }
 
@@ -613,7 +646,7 @@ export function AutoUpdate() {
                 className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-win-accent hover:text-win-accent-hover transition-colors"
               >
                 <ExternalLink className="w-3 h-3" />
-                Open {outcome.release.tag_name} on GitHub
+                Open {formatVersion(outcome.release.tag_name)} on GitHub
               </button>
             )}
           </div>
@@ -628,12 +661,12 @@ export function AutoUpdate() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-win-text">
-              Update available: v{updateInfo.latestVersion}
+              Update available: {formatVersion(updateInfo.latestVersion)}
             </p>
             <p className="text-[11px] text-win-text-secondary mt-0.5">
               {downloadedBlobUrl
                 ? 'Downloaded and verified — click Install to update.'
-                : `Newer than your current v${updateInfo.currentVersion} on the ${updateInfo.updateChannel} channel.`}
+                : `Newer than your current ${formatVersion(updateInfo.currentVersion)} on the ${updateInfo.updateChannel} channel.`}
             </p>
           </div>
           <div className="flex-shrink-0">
