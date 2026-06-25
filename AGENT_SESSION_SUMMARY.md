@@ -1,5 +1,5 @@
 # CallerFlash — Agent Session Summary
-> Generated: 2026-06-24 (America/Toronto)
+> Generated: 2026-06-25 (America/Toronto)
 > Repo: https://github.com/jaydenrussell/callerflash
 > Branch: `main`
 
@@ -7,113 +7,129 @@
 
 ## Session Overview
 
-Extended session covering CI/CD pipeline fixes, UI/UX improvements, toast notification system, system tray icon, dependency updates, and a built-in updater tool.
+Extended session covering CI/CD pipeline, UI/UX, toast notifications, system tray, updater tool, dependency updates, and versioning overhaul.
 
 ---
 
-## Interval 1 — Initial Assessment (06:27 UTC)
-
-- Cloned repo, identified CI failure on release workflow
-- Repo: Electron desktop app, Vite + React + TypeScript + Tailwind
-- Version at session start: v1.4.19
-
-## Interval 2 — CI Fix #1: Artifact Name Mismatch (06:28 UTC)
+## Interval 1 — Initial CI Fix: Artifact Name Mismatch (06:28 UTC)
 
 **Error:** `Artifact not found: callerflash-signed-1.4.19-windows`
 **Fix:** Removed `-windows` suffix from signed artifact download in `release.yml`
-**Commits:** `c5e52ed` (main), cherry-picked to stable/beta/nightly
+**Commits:** `c5e52ed` + cherry-picked to stable/beta/nightly
 
-## Interval 3 — CI Fix #2: Linux .deb Glob Pattern (06:50 UTC)
+## Interval 2 — CI Fix: Linux .deb Glob Pattern (06:50 UTC)
 
 **Error:** `Pattern 'release-linux/*.deb' does not match any files`
 **Fix:** Merged Linux .deb into `release/` via `merge-multiple: true`
-**Commits:** `861f2c8`, cherry-picked to all branches
+**Commits:** `861f2c8` + cherry-picked
 
-## Interval 4 — CI Fix #3: Electron Builder Config (06:56 UTC)
+## Interval 3 — CI Fix: Electron Builder Config (06:56 UTC)
 
-**Error:** `ENOENT: appimage-12.0.1` cache extraction failure (snap + AppImage built despite deb-only config)
+**Error:** `ENOENT: appimage-12.0.1` — AppImage/snap built despite deb-only config
 **Fix:** Added `linux.target: [deb]` to `package.json` build field (electron-builder reads from package.json, not electron-builder.yml)
-**Commits:** `2503706`, cherry-picked to all branches
+**Commits:** `2503706` + cherry-picked
 
-## Interval 5 — Toast Notification System (07:14 UTC)
+## Interval 4 — Toast Notification System (07:14-19:02 UTC)
 
-**Problem:** Toast notifications silent — `simulateIncomingCall` only sent via IPC in Electron, never populated the in-app store.
-**Fix:** Multiple iterations:
-1. Always call `addToast(record)` + IPC bridge
-2. Then: toast ONLY in separate window (never in-app)
-3. Final: `showSeparateToast()` function — Electron uses IPC to dedicated BrowserWindow, web uses `window.open()` popup
-**Commits:** `b646702`, `4168150`
+**Problem:** Toast notifications silent in Electron, only showed in-app.
+**Fix iterations:**
+1. Always `addToast(record)` + IPC bridge
+2. Toast ONLY in separate window (never in-app)
+3. `showSeparateToast()` — Electron uses IPC to dedicated BrowserWindow, web uses `window.open()` popup
+4. BGRA color format fix for nativeImage, 20% opaque status background
+5. Traffic light dot on tray icon instead of full background tint
+**Key file:** `src/utils/simulateIncomingCall.ts`
 
-## Interval 6 — Update Settings Redesign (07:14 UTC)
+## Interval 5 — Update Settings Redesign (07:14-16:56 UTC)
 
 - Added `autoDownload` toggle (separate from notification)
 - Channel selector moved to top of settings
-- Manual Download/Install buttons inline in settings panel
-- Persisted in localStorage
-**Commits:** `b646702`
+- Built-in updater with real `fetch` + `ReadableStream` download engine
+- One-click Install button: downloads if needed, then runs installer
+- Electron: main process downloads .exe, spawns installer, quits app, installer auto-restarts app (`runAfterFinish: true`)
+- Web: blob URL file save
+**Key files:** `src/components/AutoUpdate.tsx`, `electron/main.cjs`, `electron/preload.cjs`
 
-## Interval 7 — System Tray Icon (07:26-15:57 UTC)
+## Interval 6 — System Tray Icon (07:26-20:35 UTC)
 
-**Problem:** No tray icon visible, app always hidden with no way to restore.
-**Fixes:**
-- Added `extraResources` to electron-builder config (both yml and package.json)
+- Added `extraResources` to electron-builder config
 - `loadTrayIcon()` checks `process.resourcesPath` first (packaged), falls back to `../build/` (dev)
 - Main window `icon: loadTrayIcon()` for taskbar visibility
-- Padded Untitled.png to 512x512 square, regenerated tray icons
-- User provided `cflogo.ico` — renamed from `cglogo.ico`, updated all references
-**Commits:** `04e016f`, `89812df`, `d8daba0`
+- User provided `cflogo.ico` — renamed from `cglogo.ico`
+- SIP status dot: green/yellow/red circle in top-right corner of icon
+- Update indicator in tray: tooltip + context menu item
+**Key file:** `electron/main.cjs`
 
-## Interval 8 — Version Comparison & Update Banner (07:59 UTC)
+## Interval 7 — Title Bar & Sidebar UI (16:41 UTC)
 
-- Added `compareVersions()` for correct semver comparison
-- Always picks HIGHEST version on selected channel
-- Prominent amber/gold gradient banner when update available
-- "Already on latest" message when current >= latest
-**Commits:** `28bbc21`
+- Replaced text SIP status with traffic-light dot (green/yellow/red)
+- Added amber "Update" badge on title bar (clicks → Updates tab)
+- Added amber dot badge on sidebar Updates item
+**Key files:** `src/App.tsx`, `src/components/Sidebar.tsx`
 
-## Interval 9 — Update Banner Color (15:52 UTC)
+## Interval 8 — Dependency Updates (16:06 UTC)
 
-- Changed from blue to amber/gold (`from-amber-500/15 to-yellow-500/10`)
-**Commits:** `21d9577`
-
-## Interval 10 — Dependency Updates (16:06 UTC)
-
-All packages updated to latest:
-- vite 7.3.2 → 8.1.0, typescript 5.9.3 → 6.0.3, electron 41.7.1 → 42.5.0
-- react 19.2.6 → 19.2.7, tailwindcss 4.1.17 → 4.3.1, etc.
+All packages updated to latest: vite 8.1.0, typescript 6.0.3, electron 42.5.0, react 19.2.7, tailwindcss 4.3.1, etc.
 - 0 vulnerabilities (was 2)
-- GitHub Actions: upload-artifact/download-artifact v5 → v6 (Node.js 20 deprecation)
-- TypeScript 6: added `ignoreDeprecations: "6.0"`, `src/vite-env.d.ts`
-**Commits:** `a69d837`
+- GitHub Actions: upload/download-artifact v5 → v6
+- TypeScript 6: `ignoreDeprecations: "6.0"`, `src/vite-env.d.ts`
 
-## Interval 11 — Built-in Updater Tool (current)
+## Interval 9 — CI/CD Versioning Overhaul (19:10-20:54 UTC)
 
-**Problem:** Update system only linked to GitHub releases page — no actual download/install.
-**Fix:** Replaced simulated download with real fetch-based downloader:
-- `runDownload()` uses `fetch` + `ReadableStream` for real progress tracking
-- Downloads the .exe binary from GitHub CDN with live progress bar
-- Stores blob URL for install step
-- `handleInstall()` triggers actual file save (web) or Electron IPC `updater:install`
-- Auto-download: when ON, downloads immediately after verification
-- Manual download: when OFF, shows Download button → user clicks → downloads → shows Install
-- Removed GitHub link button from update banner
-**Commits:** (this commit)
+### Release naming:
+| Channel | Tag | Release Name |
+|---------|-----|-------------|
+| Nightly | `nightly-20260625` (no `v`) | `CallerFlash — Nightly 20260625` |
+| Beta | `v1.5.0-beta.28` | `CallerFlash v1.5.0-28.beta` |
+| Stable | `v1.5.0` | `CallerFlash v1.5.0` |
+
+### Asset filenames:
+| Channel | Filename |
+|---------|---------|
+| Nightly | `CallerFlash-nightly-20260625.exe` |
+| Beta | `CallerFlash-1.5.0-beta.28.exe` |
+| Stable | `CallerFlash-1.5.0.exe` |
+
+### Version handling:
+- Nightly uses `0.0.0-nightly.20260624` internally (valid semver for electron-builder) with custom `artifactName` to strip `0.0.0-` prefix
+- Beta uses `1.5.0-beta.28` (valid semver)
+- Stable uses `1.5.0` (valid semver)
+- `npm version` skipped for non-semver nightly versions
+
+### CI workflow structure:
+- `nightly.yml` — triggers on push to `nightly` branch + daily schedule + manual
+- `beta.yml` — manual dispatch only
+- `stable.yml` — manual dispatch only
+- `sync-main-to-nightly.yml` — pushes main to nightly using `PAT_TOKEN` secret (required because GITHUB_TOKEN pushes don't trigger other workflows)
+- **PAT_TOKEN secret must be added** in repo Settings → Secrets → Actions
+
+### Version comparison:
+- `compareVersions()` handles nightly date codes (always newer than semver)
+- `matchesChannel()` matches `nightly-YYYYMMDD` tags
+- `parseGithubRelease()` accepts both semver and nightly tag formats
+
+## Interval 10 — Installer File Extension Fix (18:19-19:44 UTC)
+
+**Problem:** Windows saw `.33` extension instead of `.exe` for multi-dot filenames like `CallerFlash.Setup.1.5.0-nightly.bfb419d.exe`
+**Fix:** Always save installer as `CallerFlash-Update.exe` (clean fixed filename). Verify file exists and >1MB before launching.
 
 ---
 
-## Current State (all branches)
+## Current State
 
 | Item | Status |
 |------|--------|
-| CI pipeline | ✅ All 3 fixes applied, builds passing |
+| CI pipeline | ✅ All fixes applied, nightly/beta/stable build correctly |
 | Dependencies | ✅ All latest, 0 vulnerabilities |
-| GitHub Actions | ✅ upload/download-artifact v6, no Node 20 warnings |
+| GitHub Actions | ✅ v6 actions, no Node 20 warnings |
 | Toast notifications | ✅ Separate window (Electron IPC / web popup) |
-| System tray icon | ✅ cflogo.ico via extraResources |
-| Taskbar icon | ✅ Main window icon set |
-| Update system | ✅ Real download with progress, built-in install |
-| Update banner | ✅ Amber/gold, prominent |
-| Version comparison | ✅ Correct semver, picks highest |
+| System tray | ✅ cflogo.ico + SIP status dot + update indicator |
+| Taskbar | ✅ Icon visible |
+| Title bar | ✅ Traffic-light SIP + update badge |
+| Sidebar | ✅ Update badge on Updates item |
+| Updater | ✅ Real download + one-click install + auto-restart |
+| Versioning | ✅ Date codes for nightly, clean naming for all |
+| PAT_TOKEN | ⚠️ Needs to be added as repo secret for sync workflow |
 
 ---
 
@@ -121,15 +137,22 @@ All packages updated to latest:
 
 | File | Purpose |
 |------|---------|
-| `.github/workflows/release.yml` | CI/CD release engine (400+ lines) |
-| `electron/main.cjs` | Main process — window, tray, toast, IPC |
+| `.github/workflows/release.yml` | CI/CD release engine |
+| `.github/workflows/nightly.yml` | Nightly trigger |
+| `.github/workflows/beta.yml` | Beta trigger (manual) |
+| `.github/workflows/stable.yml` | Stable trigger (manual) |
+| `.github/workflows/sync-main-to-nightly.yml` | Main → nightly sync (uses PAT_TOKEN) |
+| `electron/main.cjs` | Main process — window, tray, toast, updater IPC |
 | `electron/preload.cjs` | IPC bridge (contextBridge) |
 | `src/components/AutoUpdate.tsx` | Update UI + download engine |
 | `src/components/ToastWindow.tsx` | Separate toast window renderer |
-| `src/components/ToastSettings.tsx` | Toast configuration UI |
+| `src/components/Sidebar.tsx` | Sidebar with update badge |
+| `src/App.tsx` | Title bar with traffic-light + update badge |
 | `src/utils/simulateIncomingCall.ts` | Call simulation + toast display |
 | `src/store/useAppStore.ts` | Zustand store (all app state) |
 | `src/security/updateVerifier.ts` | Ed25519 verification pipeline |
+| `scripts/next-version.cjs` | Version computation per channel |
+| `scripts/generate-release-notes.cjs` | Release notes from commits |
 | `package.json` | Dependencies + electron-builder config |
 | `electron-builder.yml` | Electron builder config (mirror) |
 | `build/cflogo.ico` | System tray icon (7 resolutions) |
@@ -138,8 +161,11 @@ All packages updated to latest:
 
 ## Architecture Notes
 
-- **Release workflows** trigger on pushes to `stable`/`beta`/`nightly` branches, NOT `main`
-- **electron-builder** reads config from `package.json` `build` field, not `electron-builder.yml`
+- **Release workflows** trigger on channel branches, NOT main
+- **electron-builder** reads config from `package.json` `build` field
 - **Toast system**: Electron = IPC to dedicated BrowserWindow; Web = `window.open()` popup
-- **Update flow**: GitHub API → filter by channel → sort by version → verify (Ed25519) → download (fetch + streaming) → install (Electron IPC or file save)
-- **extraResources** copies tray icon files into `process.resourcesPath` for packaged builds
+- **Update flow**: GitHub API → filter by channel → sort by version → verify (Ed25519) → download (fetch + streaming) → install (Electron IPC: download + spawn .exe + quit + auto-restart)
+- **extraResources** copies tray icon files into `process.resourcesPath`
+- **PAT_TOKEN** required for sync workflow (GITHUB_TOKEN pushes don't trigger workflows)
+- **Nightly version**: `0.0.0-nightly.20260624` in package.json, `CallerFlash-nightly-20260624.exe` filename
+- **Tray icon**: base cflogo + solid colored dot in top-right corner (BGRA format)
