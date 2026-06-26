@@ -1,7 +1,7 @@
 const sip = require('sip');
 const digest = require('sip/digest');
 const os = require('os');
-const { v4: uuidv4 } = require('crypto');
+const { randomUUID: uuidv4 } = require('crypto');
 
 function getLocalIp() {
   const nets = os.networkInterfaces();

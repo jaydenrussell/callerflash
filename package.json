@@ -18,19 +18,10 @@
     "electron:publish": "npm run electron:build && npx electron-builder --win --x64 --publish always"
   },
   "dependencies": {
-    "clsx": "2.1.1",
-    "ip": "^2.0.1",
-    "jssip": "^3.13.8",
-    "lucide-react": "^1.21.0",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
-    "sip": "^0.0.6",
-    "tailwind-merge": "3.6.0",
-    "zustand": "^5.0.14"
+    "sip": "^0.0.6"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.1",
-    "@types/jssip": "^3.5.3",
     "@types/node": "26.0.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
@@ -40,7 +31,13 @@
     "tailwindcss": "4.3.1",
     "typescript": "^6.0.3",
     "vite": "8.1.0",
-    "vite-plugin-singlefile": "2.3.3"
+    "vite-plugin-singlefile": "2.3.3",
+    "clsx": "2.1.1",
+    "lucide-react": "^1.21.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "tailwind-merge": "3.6.0",
+    "zustand": "^5.0.14"
   },
   "build": {
     "appId": "com.callerflash.app",
@@ -51,8 +48,7 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*",
-      "!node_modules"
+      "electron/**/*"
     ],
     "artifactName": "CallerFlash-${version}.${ext}",
     "win": {
