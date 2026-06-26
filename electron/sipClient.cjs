@@ -43,7 +43,7 @@ function sendRegister(callbacks) {
     }
   };
 
-  sip.send(rq, (rs) => {
+  client.send(rq, (rs) => {
     if (rs.status === 401 || rs.status === 407) {
       // Digest Challenge
       const authRq = {
@@ -67,7 +67,7 @@ function sendRegister(callbacks) {
 
       digest.signRequest({}, authRq, rs, creds);
 
-      sip.send(authRq, (rs2) => {
+      client.send(authRq, (rs2) => {
         if (rs2.status >= 200 && rs2.status < 300) {
           callbacks.onRegistered();
         } else {
@@ -112,7 +112,7 @@ function connect(config, callbacks) {
         // Reject automatically (CallerFlash is just a monitor, it doesn't answer audio)
         // 486 Busy Here is appropriate for a monitor that doesn't accept the call.
         const rs = sip.makeResponse(rq, 486, 'Busy Here');
-        sip.send(rs);
+        client.send(rs);
       }
     });
 
@@ -156,21 +156,21 @@ function disconnect() {
         }
       };
       
-      sip.send(rq, (rs) => {
+      client.send(rq, (rs) => {
         if (rs.status === 401 || rs.status === 407) {
           const authRq = { ...rq, headers: { ...rq.headers, cseq: { method: 'REGISTER', seq: cseq++ } } };
           digest.signRequest({}, authRq, rs, {
             user: currentConfig.authUsername || currentConfig.username,
             password: currentConfig.password,
-            realm: currentConfig.server
+            realm: rs.headers['www-authenticate']?.[0]?.realm || currentConfig.server
           });
-          sip.send(authRq);
+          client.send(authRq);
         }
       });
     } catch { /* ignore */ }
 
     // Destroy client
-    sip.destroy(client);
+    client.destroy();
     client = null;
   }
 }
