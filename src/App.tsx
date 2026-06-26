@@ -315,7 +315,15 @@ export default function App() {
   // the renderer mounts. The user sees only the tray icon.
   // We override this on the first run after a fresh install or an update so the user actually sees the app UI.
   useEffect(() => {
-    if (!appPreferences.startMinimized || isFirstRunAfterUpdate) return;
+    if (!appPreferences.startMinimized || isFirstRunAfterUpdate) {
+      if (isFirstRunAfterUpdate) {
+        setIsMinimized(false);
+        if (window.callerflash?.window?.show) {
+          window.callerflash.window.show();
+        }
+      }
+      return;
+    }
     
     setIsMinimized(true);
     // Defer one tick so the IPC channel is wired up by the preload bridge.
