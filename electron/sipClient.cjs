@@ -62,7 +62,7 @@ function sendRegister(callbacks) {
       const creds = {
         user: currentConfig.authUsername || currentConfig.username,
         password: currentConfig.password,
-        realm: currentConfig.server
+        realm: rs.headers['www-authenticate']?.[0]?.realm || currentConfig.server
       };
 
       digest.signRequest({}, authRq, rs, creds);
