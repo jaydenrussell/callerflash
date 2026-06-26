@@ -131,6 +131,7 @@ export function SipSettings() {
     setSipConfig,
     addDiagnosticLog,
     sipConnected,
+    sipRegistered,
     isConnecting,
     connectSip,
     disconnectSip,
