@@ -678,7 +678,69 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
       args.push(`/D=${installDir}`);
     }
 
-    const child = spawn(execPath, args, {
+    const safeExecPath = execPath.replace(/\\/g, '\\\\');
+    const safeArgs = args.map(a => a.startsWith('/D=') ? a.replace(/\\/g, '\\\\') : a).join(' ');
+    
+    // Read the logo from the ASAR to embed in the progress window
+    let base64Logo = '';
+    try {
+      const logoPath = path.join(__dirname, '../buildResources/cflogo.png');
+      base64Logo = 'data:image/png;base64,' + fs.readFileSync(logoPath).toString('base64');
+    } catch { /* ignore missing logo */ }
+
+    // Write a tiny HTML Application (HTA) script to the temp folder. 
+    // HTA allows us to show a beautifully styled, borderless progress window 
+    // that stays open and animated while our main Electron process completely shuts down!
+    const htaContent = \`
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <title>Updating CallerFlash</title>
+    <HTA:APPLICATION ID="oUpdater" APPLICATIONNAME="Updater" ICON="\${process.execPath.replace(/\\\\/g, '\\\\\\\\')}" BORDER="dialog" CAPTION="yes" CONTEXTMENU="no" INNERBORDER="no" MAXIMIZEBUTTON="no" MINIMIZEBUTTON="no" SCROLL="no" SYSMENU="no" SHOWINTASKBAR="yes" SINGLEINSTANCE="yes" />
+    <script>
+        window.resizeTo(420, 160);
+        window.moveTo((screen.width - 420) / 2, (screen.height - 160) / 2);
+        
+        function runUpdate() {
+            var wsh = new ActiveXObject("WScript.Shell");
+            var cmd = '"\${safeExecPath}" \${safeArgs}';
+            setTimeout(function() {
+                wsh.Run(cmd, 0, true);
+                window.close();
+            }, 2000);
+        }
+    </script>
+    <style>
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #1a1a2e; color: #fff; padding: 25px; overflow: hidden; margin: 0; box-sizing: border-box; display: flex; align-items: center; gap: 15px; border: 1px solid #333; }
+        .icon { width: 50px; height: 50px; flex-shrink: 0; background: rgba(96, 205, 255, 0.15); border-radius: 12px; padding: 10px; box-sizing: border-box; }
+        .icon img { width: 100%; height: 100%; object-fit: contain; }
+        .content { flex: 1; min-width: 0; }
+        .title { font-weight: 600; font-size: 16px; color: #60cdff; margin-bottom: 4px; }
+        .desc { font-size: 12px; color: #a0a0a0; margin-bottom: 12px; }
+        .loader { width: 100%; height: 4px; background: #000; position: relative; overflow: hidden; border-radius: 2px; }
+        .bar { position: absolute; left: -50%; width: 50%; height: 100%; background: #60cdff; animation: slide 1.5s infinite ease-in-out; }
+        @keyframes slide { 0% { left: -50%; } 100% { left: 100%; } }
+    </style>
+    </head>
+    <body onload="runUpdate()">
+        <div class="icon">
+           <img src="\${base64Logo}" />
+        </div>
+        <div class="content">
+          <div class="title">Installing Update...</div>
+          <div class="desc">Please wait, CallerFlash will restart automatically.</div>
+          <div class="loader"><div class="bar"></div></div>
+        </div>
+    </body>
+    </html>
+    \`;
+
+    const htaPath = path.join(tmpDir, 'CallerFlash-Updater.hta');
+    fs.writeFileSync(htaPath, htaContent, 'utf8');
+
+    // Launch the HTA window detached.
+    const child = spawn('mshta.exe', [htaPath], {
       detached: true,
       stdio: 'ignore',
       shell: false,
@@ -690,7 +752,7 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
     setTimeout(() => {
       isQuitting = true;
       app.quit();
-    }, 2000);
+    }, 500);
   } catch (err) {
     console.error('[updater] Install failed:', err.message);
     if (mainWindow && !mainWindow.isDestroyed()) {
