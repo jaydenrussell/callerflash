@@ -156,9 +156,10 @@ function refreshTrayMenu() {
   ];
 
   if (updateAvailableVersion) {
+    const cleanVer = updateAvailableVersion.replace(/^v/, '').replace(/^0\.0\.0-/, '');
     items.push({ type: 'separator' });
     items.push({
-      label: `⬆ Update available: v${updateAvailableVersion}`,
+      label: `⬆ Update available: ${cleanVer}`,
       click: () => {
         showWindow();
         // Tell the renderer to navigate to the Updates tab.
@@ -181,7 +182,7 @@ function refreshTrayMenu() {
   const menu = Menu.buildFromTemplate(items);
   tray.setContextMenu(menu);
   const tip = updateAvailableVersion
-    ? `CallerFlash — SIP ${lastSipStatus} · Update v${updateAvailableVersion} available`
+    ? `CallerFlash — SIP ${lastSipStatus} · Update ${updateAvailableVersion.replace(/^v/, '').replace(/^0\.0\.0-/, '')} available`
     : `CallerFlash — SIP ${lastSipStatus}`;
   tray.setToolTip(tip);
 }

@@ -12,6 +12,7 @@ import { ToastContainer } from './components/ToastNotification';
 import { useAppStore } from './store/useAppStore';
 import { AppWindow, Minus, PhoneIncoming, Square, Undo2, Wifi, WifiOff, X } from 'lucide-react';
 import { simulateIncomingCall } from './utils/simulateIncomingCall';
+import { formatVersion } from './utils/formatVersion';
 
 // Threshold below which the sidebar collapses to icons only
 const SIDEBAR_COLLAPSE_BREAKPOINT = 720;
@@ -96,7 +97,7 @@ function TitleBar({ compact }: { compact: boolean }) {
             onClick={() => setActiveTab('update')}
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 transition-colors flex-shrink-0"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            title={`Update v${updateInfo.latestVersion} available — click to open`}
+            title={`Update ${formatVersion(updateInfo.latestVersion)} available — click to open`}
           >
             <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
             <span className="text-[10px] font-semibold text-amber-400">Update</span>

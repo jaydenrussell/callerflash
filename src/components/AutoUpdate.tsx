@@ -409,7 +409,7 @@ export function AutoUpdate() {
       }
 
       if (!result.approved) {
-        const msg = `Update v${artifact.version} REJECTED by verification — refusing to install. See the verification panel below for the failing step.`;
+        const msg = `Update ${formatVersion(artifact.version)} REJECTED by verification — refusing to install. See the verification panel below for the failing step.`;
         addDiagnosticLog({ level: 'error', category: 'UPDATE', message: msg });
         setUpdateInfo({
           updateAvailable: false,
@@ -424,7 +424,7 @@ export function AutoUpdate() {
       addDiagnosticLog({
         level: 'success',
         category: 'UPDATE',
-        message: `Update v${artifact.version} verified — ${updateInfo.autoDownload ? 'auto-downloading' : 'waiting for user to click Download'}`,
+        message: `Update ${formatVersion(artifact.version)} verified — ${updateInfo.autoDownload ? 'auto-downloading' : 'waiting for user to click Download'}`,
       });
 
       // Update store state so the UI reflects the verified version.
@@ -516,7 +516,7 @@ export function AutoUpdate() {
       addDiagnosticLog({
         level: 'success',
         category: 'UPDATE',
-        message: `Update v${artifact.version} downloaded (${(received / 1048576).toFixed(1)} MB) — ready to install`,
+        message: `Update ${formatVersion(artifact.version)} downloaded (${(received / 1048576).toFixed(1)} MB) — ready to install`,
       });
       return true;
     } catch (err) {
@@ -592,7 +592,7 @@ export function AutoUpdate() {
       addDiagnosticLog({
         level: 'success',
         category: 'UPDATE',
-        message: `Update v${updateInfo.latestVersion} installer saved — run it to complete the update.`,
+        message: `Update ${formatVersion(updateInfo.latestVersion)} installer saved — run it to complete the update.`,
       });
     }, 1000);
   };
