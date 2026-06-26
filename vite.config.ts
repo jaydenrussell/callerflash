@@ -25,5 +25,6 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __APP_REPO__: JSON.stringify(pkg.repository?.url || "https://github.com/jaydenrussell/callerflash"),
+    __APP_BUILD_TIMESTAMP__: Date.now(),
   },
 });

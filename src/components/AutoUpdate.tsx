@@ -65,8 +65,8 @@ function parseChangelog(body: string, max = 6): string[] {
  * Between two nightlies, the later date wins.
  */
 function compareVersions(a: string, b: string): number {
-  const va = a.replace(/^v/, '');
-  const vb = b.replace(/^v/, '');
+  const va = formatVersion(a);
+  const vb = formatVersion(b);
 
   // Handle nightly date codes.
   const nightlyA = va.match(/^nightly-(\d{8})$/);
@@ -186,8 +186,8 @@ export function AutoUpdate() {
     () => releases
       .filter((r) => matchesChannel(r, updateInfo.updateChannel))
       .sort((a, b) => compareVersions(
-        b.tag_name.replace(/^v/, ''),
-        a.tag_name.replace(/^v/, ''),
+        formatVersion(b.tag_name),
+        formatVersion(a.tag_name),
       )),
     [releases, updateInfo.updateChannel],
   );
@@ -302,8 +302,8 @@ export function AutoUpdate() {
       const channelFiltered = fetched
         .filter((r) => matchesChannel(r, channel))
         .sort((a, b) => compareVersions(
-          b.tag_name.replace(/^v/, ''),
-          a.tag_name.replace(/^v/, ''),
+          formatVersion(b.tag_name),
+          formatVersion(a.tag_name),
         ));
       const candidate = channelFiltered[0] ?? null;
 
@@ -320,8 +320,24 @@ export function AutoUpdate() {
         return;
       }
 
-      const candidateVersion = candidate.tag_name.replace(/^v/, '');
-      const isHigher = compareVersions(candidateVersion, updateInfo.currentVersion) > 0;
+      const candidateVersion = formatVersion(candidate.tag_name);
+      let isHigher = compareVersions(candidateVersion, updateInfo.currentVersion) > 0;
+
+      // Same-day nightly push: if versions match exactly, check if the remote
+      // release was published >30 mins after this exact build was compiled.
+      if (!isHigher && channel === 'nightly' && compareVersions(candidateVersion, updateInfo.currentVersion) === 0) {
+        const publishTime = new Date(candidate.published_at).getTime();
+        // Give the CI 30 mins to run `vite build` + electron-builder + upload to GitHub, 
+        // to prevent immediate false positive loops.
+        if (publishTime > __APP_BUILD_TIMESTAMP__ + 30 * 60 * 1000) {
+          isHigher = true;
+          addDiagnosticLog({
+            level: 'info',
+            category: 'UPDATE',
+            message: `Nightly timestamp check: remote release published later than local build.`,
+          });
+        }
+      }
 
       // Track the release page for the "Open on GitHub" fallback button.
       setUpdateInfo({ releasePageUrl: candidate.html_url });
@@ -866,7 +882,7 @@ export function AutoUpdate() {
           ) : (
             <div className="divide-y divide-win-border/40 overflow-y-auto pr-1">
               {channelReleases.map((release) => {
-                const isCurrent = release.tag_name.replace(/^v/, '') === updateInfo.currentVersion;
+                const isCurrent = formatVersion(release.tag_name) === formatVersion(updateInfo.currentVersion);
                 const notes = parseChangelog(release.body);
                 return (
                   <div key={release.tag_name} className="py-2 first:pt-0 last:pb-0">

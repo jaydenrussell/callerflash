@@ -34,7 +34,7 @@
     "electron": "^42.5.0",
     "electron-builder": "^26.15.3",
     "tailwindcss": "4.3.1",
-    "typescript": "6.0.3",
+    "typescript": "^6.0.3",
     "vite": "8.1.0",
     "vite-plugin-singlefile": "2.3.3"
   },
@@ -55,7 +55,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico"
@@ -75,14 +77,22 @@
     },
     "publish": null,
     "extraResources": [
-      { "from": "build/cflogo.ico", "to": "cflogo.ico" },
-      { "from": "build/cflogo.png", "to": "cflogo.png" }
+      {
+        "from": "build/cflogo.ico",
+        "to": "cflogo.ico"
+      },
+      {
+        "from": "build/cflogo.png",
+        "to": "cflogo.png"
+      }
     ],
     "linux": {
       "target": [
         {
           "target": "deb",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "category": "Network",
