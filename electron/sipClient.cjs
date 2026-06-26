@@ -34,6 +34,13 @@ function getServerUri() {
   return `sip:${currentConfig.server}${portPart}${transportParam}`;
 }
 
+function unq(a) {
+  if (a && a[0] === '"' && a[a.length - 1] === '"') {
+    return a.substr(1, a.length - 2);
+  }
+  return a;
+}
+
 function sendRegister(callbacks) {
   if (!client) return;
 
@@ -69,10 +76,16 @@ function sendRegister(callbacks) {
         }
       };
 
+      let realm = currentConfig.server;
+      let authHeaders = rs.headers['www-authenticate'] || rs.headers['proxy-authenticate'];
+      if (authHeaders && authHeaders.length > 0) {
+        realm = unq(authHeaders[0].realm) || realm;
+      }
+
       const creds = {
         user: currentConfig.authUsername || currentConfig.username,
         password: currentConfig.password,
-        realm: rs.headers['www-authenticate']?.[0]?.realm || currentConfig.server
+        realm: realm
       };
 
       digest.signRequest({}, authRq, rs, creds);
@@ -183,10 +196,15 @@ function disconnect() {
       client.send(rq, (rs) => {
         if (rs.status === 401 || rs.status === 407) {
           const authRq = { ...rq, headers: { ...rq.headers, cseq: { method: 'REGISTER', seq: cseq++ } } };
+          let realm = currentConfig.server;
+          let authHeaders = rs.headers['www-authenticate'] || rs.headers['proxy-authenticate'];
+          if (authHeaders && authHeaders.length > 0) {
+            realm = unq(authHeaders[0].realm) || realm;
+          }
           digest.signRequest({}, authRq, rs, {
             user: currentConfig.authUsername || currentConfig.username,
             password: currentConfig.password,
-            realm: rs.headers['www-authenticate']?.[0]?.realm || currentConfig.server
+            realm: realm
           });
           client.send(authRq);
         }
