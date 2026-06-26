@@ -691,20 +691,20 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
     // Write a tiny HTML Application (HTA) script to the temp folder. 
     // HTA allows us to show a beautifully styled, borderless progress window 
     // that stays open and animated while our main Electron process completely shuts down!
-    const htaContent = \`
+    const htaContent = `
     <!DOCTYPE html>
     <html>
     <head>
     <meta http-equiv="x-ua-compatible" content="ie=edge">
     <title>Updating CallerFlash</title>
-    <HTA:APPLICATION ID="oUpdater" APPLICATIONNAME="Updater" ICON="\${process.execPath.replace(/\\\\/g, '\\\\\\\\')}" BORDER="dialog" CAPTION="yes" CONTEXTMENU="no" INNERBORDER="no" MAXIMIZEBUTTON="no" MINIMIZEBUTTON="no" SCROLL="no" SYSMENU="no" SHOWINTASKBAR="yes" SINGLEINSTANCE="yes" />
+    <HTA:APPLICATION ID="oUpdater" APPLICATIONNAME="Updater" ICON="${process.execPath.replace(/\\/g, '\\\\')}" BORDER="dialog" CAPTION="yes" CONTEXTMENU="no" INNERBORDER="no" MAXIMIZEBUTTON="no" MINIMIZEBUTTON="no" SCROLL="no" SYSMENU="no" SHOWINTASKBAR="yes" SINGLEINSTANCE="yes" />
     <script>
         window.resizeTo(420, 160);
         window.moveTo((screen.width - 420) / 2, (screen.height - 160) / 2);
         
         function runUpdate() {
             var wsh = new ActiveXObject("WScript.Shell");
-            var cmd = '"\${safeExecPath}" \${safeArgs}';
+            var cmd = '"${safeExecPath}" ${safeArgs}';
             setTimeout(function() {
                 wsh.Run(cmd, 0, true);
                 window.close();
@@ -725,7 +725,7 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
     </head>
     <body onload="runUpdate()">
         <div class="icon">
-           <img src="\${base64Logo}" />
+           <img src="${base64Logo}" />
         </div>
         <div class="content">
           <div class="title">Installing Update...</div>
@@ -734,7 +734,7 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
         </div>
     </body>
     </html>
-    \`;
+    `;
 
     const htaPath = path.join(tmpDir, 'CallerFlash-Updater.hta');
     fs.writeFileSync(htaPath, htaContent, 'utf8');
