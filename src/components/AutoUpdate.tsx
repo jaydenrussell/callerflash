@@ -544,32 +544,44 @@ export function AutoUpdate() {
    */
   const handleInstall = async () => {
     if (phase === 'installing' || phase === 'downloading') return;
+
+    let finalArtifactUrl = artifactUrl;
+    if (!finalArtifactUrl) {
+      // If the app was restarted and the state lost the artifactUrl, try to find it from the loaded releases
+      const release = channelReleases.find((r) => formatVersion(r.tag_name) === formatVersion(updateInfo.latestVersion));
+      const binary = release?.assets.find((a) => /\.(exe|msi|AppImage|dmg|zip)$/i.test(a.name));
+      if (binary) {
+        finalArtifactUrl = binary.browser_download_url;
+      }
+    }
+
+    if (!finalArtifactUrl) {
+      addDiagnosticLog({ level: 'info', category: 'UPDATE', message: 'Verifying installer path before installation...' });
+      // Rerun the check sequence to verify the update and populate the artifactUrl securely
+      await handleCheckAndDownload();
+      return;
+    }
+
     setPhase('installing');
     setUpdateInfo({ isInstalling: true });
     addDiagnosticLog({
       level: 'info',
       category: 'UPDATE',
-      message: `Installing update v${updateInfo.latestVersion}…`,
+      message: `Installing update ${formatVersion(updateInfo.latestVersion)}…`,
     });
 
     // Electron: pass the download URL to main process — it downloads,
     // saves, spawns the installer, and quits the app.
     if (window.callerflash?.updater?.install) {
-      if (!artifactUrl) {
-        addDiagnosticLog({ level: 'error', category: 'UPDATE', message: 'No valid installer URL found.' });
-        setPhase('idle');
-        setUpdateInfo({ isInstalling: false });
-        return;
-      }
       // The main process will emit `updater:status` events which our useEffect below catches.
-      window.callerflash.updater.install(artifactUrl);
+      window.callerflash.updater.install(finalArtifactUrl);
       return;
     }
 
     // Web: ensure we have the file downloaded, then save it.
-    if (!downloadedBlobUrl && artifactUrl) {
+    if (!downloadedBlobUrl && finalArtifactUrl) {
       addDiagnosticLog({ level: 'info', category: 'UPDATE', message: 'Downloading before install…' });
-      const ok = await runDownload({ version: updateInfo.latestVersion, downloadUrl: artifactUrl });
+      const ok = await runDownload({ version: updateInfo.latestVersion, downloadUrl: finalArtifactUrl });
       if (!ok) {
         setPhase('idle');
         setUpdateInfo({ isInstalling: false });
