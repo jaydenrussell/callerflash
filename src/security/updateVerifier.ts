@@ -1,31 +1,22 @@
 /**
  * Update verification primitives.
  *
- * In the production Electron build, verification is performed in the MAIN
- * process (Node, never renderer) before any binary is written to disk. The
- * renderer only displays the result.
+ * Renderer-side verification is advisory only: it validates channel policy,
+ * version monotonicity, and the detached signature on the release checksum
+ * manifest so the UI can explain whether an update looks trustworthy.
+ *
+ * The Electron main process performs the final install-time verification of
+ * the downloaded installer bytes against the pinned SHA-256 and Ed25519
+ * signature before the helper window is launched.
  *
  *   1. Code-signing (Authenticode / EV cert) catches publisher identity.
  *   2. SHA-256 checksum catches transport corruption or CDN tampering.
  *   3. Ed25519 detached signature catches the case where BOTH the binary
  *      and checksum are swapped by an attacker who compromises the CDN.
- *   4. Channel monotonicity (release date ascending) catches roll-back to
- *      a known-vulnerable older release.
+ *   4. Version monotonicity catches roll-back to a known-vulnerable release.
  *
  * The verify public key is HARD-CODED below. It must NEVER be fetched at
  * runtime — that would itself be a hijack vector.
- *
- * The matching private key is held by the project maintainer offline. The
- * signing step happens at release time with:
- *
- *   openssl genpkey -algorithm Ed25519 -out release-signing.key
- *   openssl pkey -in release-signing.key -pubout -out release-signing.pub
- *   # per release:
- *   sha256sum CallerFlash-Setup-1.5.0.exe > SHA256SUMS
- *   openssl pkeyutl -sign -rawin -in SHA256SUMS -inkey release-signing.key \
- *       -out CallerFlash-Setup-1.5.0.exe.sig
- *
- * The .sig and SHA256SUMS files are attached to the GitHub Release.
  */
 
 // Public key in raw 32-byte Ed25519 form, base64-encoded.
@@ -48,11 +39,6 @@ export const MIN_SUPPORTED_VERSION = '1.4.0';
 
 // Update channel definitions — stable is the only one most users should
 // ever see, but we expose beta/nightly under explicit opt-in.
-//
-// Note: the previous "minimum release age" soak policy has been removed.
-// Semver (1.x.y vs 1.x.y-rc.N) is the signal for release maturity;
-// arbitrary wall-clock delays add no real safety once the version is
-// pinned and signed.
 export const CHANNEL_POLICY = {
   stable: { allowPrerelease: false },
   beta: { allowPrerelease: true },
@@ -66,6 +52,7 @@ export interface UpdateArtifact {
   releaseDate: string; // ISO 8601
   downloadUrl: string;
   sha256: string; // hex
+  sha256Manifest: string; // raw SHA256SUMS text
   signatureB64: string;
   notes: string;
   prerelease: boolean;
@@ -83,16 +70,52 @@ export interface VerificationResult {
   artifact?: UpdateArtifact;
 }
 
+function base64ToBytes(base64: string): Uint8Array {
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  } catch {
+    return new Uint8Array(0);
+  }
+}
+
+async function verifyDetachedSignature(manifest: string, signatureB64: string): Promise<boolean> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return false;
+
+  const publicKeyBytes = base64ToBytes(RELEASE_SIGNING_PUBLIC_KEY_B64);
+  const signatureBytes = base64ToBytes(signatureB64);
+  if (!publicKeyBytes.length || !signatureBytes.length) return false;
+
+  const key = await subtle.importKey(
+    'raw',
+    publicKeyBytes,
+    { name: 'Ed25519' },
+    false,
+    ['verify'],
+  );
+  return subtle.verify(
+    { name: 'Ed25519' },
+    key,
+    signatureBytes,
+    new TextEncoder().encode(manifest),
+  );
+}
+
 /**
  * Verify a GitHub release artifact against our pinned public key, channel
- * policy, and minimum version. This function is intentionally pure — it
- * has no side effects and does not perform the actual download/install.
+ * policy, and minimum version. This function is intentionally pure-ish — it
+ * performs network reads for reachability and signature verification only.
  */
 export async function verifyUpdateArtifact(
   artifact: UpdateArtifact,
   channel: UpdateChannel,
   currentVersion: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
 ): Promise<VerificationResult> {
   const steps: VerificationStep[] = [];
 
@@ -145,7 +168,7 @@ export async function verifyUpdateArtifact(
   });
   if (!monoOk) return { approved: false, steps };
 
-  // 6. Minimum supported version (in case current is ancient)
+  // 5. Minimum supported version (in case current is ancient)
   const minOk = compareSemver(currentVersion, MIN_SUPPORTED_VERSION) >= 0
     || compareSemver(artifact.version, MIN_SUPPORTED_VERSION) >= 0;
   steps.push({
@@ -155,7 +178,7 @@ export async function verifyUpdateArtifact(
   });
   if (!minOk) return { approved: false, steps };
 
-  // 7. SHA-256 checksum (hex format check)
+  // 6. SHA-256 format
   const shaHexOk = /^[a-f0-9]{64}$/i.test(artifact.sha256);
   steps.push({
     name: 'SHA-256 format',
@@ -164,29 +187,36 @@ export async function verifyUpdateArtifact(
   });
   if (!shaHexOk) return { approved: false, steps };
 
-  // 8. Ed25519 signature presence
-  const sigPresent = artifact.signatureB64.length > 0;
+  // 7. Signature presence
+  const sigPresent = artifact.signatureB64.length > 0 && artifact.sha256Manifest.length > 0;
   steps.push({
     name: 'Signature present',
     passed: sigPresent,
-    detail: sigPresent ? 'Detached signature attached' : 'No signature attached — refusing',
+    detail: sigPresent ? 'Detached signature and manifest attached' : 'Missing signature or checksum manifest',
   });
   if (!sigPresent) return { approved: false, steps };
 
-  // 9. Cryptographic verification (download → hash → verify signature)
-  // In the Electron main process this is done with Node's `crypto` module:
-  //
-  //   const bytes = await downloadBinary(artifact.downloadUrl);
-  //   const actualHash = createHash('sha256').update(bytes).digest('hex');
-  //   if (actualHash !== artifact.sha256) throw new Error('Checksum mismatch');
-  //   const ok = verify(null, Buffer.from(artifact.sha256),
-  //                      Buffer.from(artifact.signatureB64, 'base64'),
-  //                      Buffer.from(RELEASE_SIGNING_PUBLIC_KEY_B64, 'base64'));
-  //
-  // The web demo cannot perform raw Ed25519 verification without WebCrypto's
-  // subtle.importKey('raw', ..., { name: 'Ed25519' }) which is supported in
-  // modern browsers. We simulate the download here and stop at the
-  // signature step with a clear log so the user sees the full audit trail.
+  // 8. Verify the detached signature on the checksum manifest.
+  try {
+    const sigOk = await verifyDetachedSignature(artifact.sha256Manifest, artifact.signatureB64);
+    steps.push({
+      name: 'Ed25519 signature',
+      passed: sigOk,
+      detail: sigOk
+        ? `Verified against pinned key (${RELEASE_SIGNING_PUBLIC_KEY_B64.slice(0, 12)}…)`
+        : 'Signature verification failed',
+    });
+    if (!sigOk) return { approved: false, steps };
+  } catch (err) {
+    steps.push({
+      name: 'Ed25519 signature',
+      passed: false,
+      detail: `Verification error: ${err instanceof Error ? err.message : 'unknown'}`,
+    });
+    return { approved: false, steps };
+  }
+
+  // 9. Artifact reachability (lightweight sanity check only)
   try {
     const headResponse = await fetchImpl(artifact.downloadUrl, { method: 'HEAD' });
     const reachable = headResponse.ok;
@@ -207,29 +237,12 @@ export async function verifyUpdateArtifact(
     return { approved: false, steps };
   }
 
-  steps.push({
-    name: 'Ed25519 signature',
-    passed: true,
-    detail: `Verified against pinned key (${RELEASE_SIGNING_PUBLIC_KEY_B64.slice(0, 12)}…) — see SECURITY.md for the verify procedure`,
-  });
-
   return { approved: true, steps, artifact };
 }
 
 /**
  * Parse a GitHub release JSON object into our internal artifact shape,
  * fetching SHA256SUMS + .sig so the caller has real values to verify.
- *
- * SHA256SUMS looks like:
- *     <sha256-hex>   <basename>
- *     abc123…  CallerFlash-Setup-1.5.0.exe
- *     def456…  CallerFlash-Setup-1.5.0.exe.blockmap
- *
- * We match on the binary's basename (two-space separator per `sha256sum`),
- * so the field order in the file doesn't matter.
- *
- * Returns null if any required asset is missing OR if SHA256SUMS / .sig
- * can't be fetched — the verifier cannot proceed without them.
  */
 export async function parseGithubRelease(release: {
   tag_name: string;
@@ -238,8 +251,6 @@ export async function parseGithubRelease(release: {
   body: string;
   assets: Array<{ name: string; browser_download_url: string }>;
 }): Promise<UpdateArtifact | null> {
-  // Accept "v1.5.0" or "1.5.0"
-  // Match semver (v1.5.0, v1.5.0-beta.28) or nightly date code (vnightly-20260624).
   const versionMatch = release.tag_name.match(/v?(\d+\.\d+\.\d+(?:-[\w.]+)?)/)
     || release.tag_name.match(/v?(nightly-\d{8})/i);
   if (!versionMatch) return null;
@@ -253,18 +264,17 @@ export async function parseGithubRelease(release: {
 
   // Fetch SHA256SUMS (text) and parse the line that matches the binary.
   let sha256 = '';
+  let sha256Manifest = '';
   try {
     const shaResp = await fetch(shaAsset.browser_download_url);
     if (shaResp.ok) {
-      const shaText = await shaResp.text();
+      sha256Manifest = await shaResp.text();
       const basename = binary.name;
-      const line = shaText
+      const line = sha256Manifest
         .split('\n')
         .map((l) => l.trim())
-        .find((l) => l.endsWith(basename) || l.endsWith('*' + basename));
+        .find((l) => l.endsWith(basename) || l.endsWith(`*${basename}`));
       if (line) {
-        // sha256sum output format: `<hex><two-spaces><name>` (or `*<name>` on
-        // binary-mode line). Strip everything after the hex.
         const match = line.match(/^([a-f0-9]{64})/i);
         if (match) sha256 = match[1].toLowerCase();
       }
@@ -272,7 +282,7 @@ export async function parseGithubRelease(release: {
   } catch {
     // Network failure — leave sha256 empty so verifier refuses.
   }
-  if (!sha256) return null;
+  if (!sha256 || !sha256Manifest) return null;
 
   // Fetch the detached .sig (binary) and base64-encode it so it can be
   // round-tripped through our verifier.
@@ -281,7 +291,6 @@ export async function parseGithubRelease(release: {
     const sigResp = await fetch(sigAsset.browser_download_url);
     if (sigResp.ok) {
       const buf = new Uint8Array(await sigResp.arrayBuffer());
-      // Ed25519 sigs are 64 bytes — String.fromCharCode spread is fine.
       signatureB64 = btoa(String.fromCharCode(...buf));
     }
   } catch {
@@ -294,6 +303,7 @@ export async function parseGithubRelease(release: {
     releaseDate: release.published_at,
     downloadUrl: binary.browser_download_url,
     sha256,
+    sha256Manifest,
     signatureB64,
     notes: release.body,
     prerelease: release.prerelease,
@@ -301,9 +311,22 @@ export async function parseGithubRelease(release: {
 }
 
 function compareSemver(a: string, b: string): number {
-  const pa = a.replace(/^v/, '').split(/[.-]/);
-  const pb = b.replace(/^v/, '').split(/[.-]/);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+  const va = a.replace(/^v/, '');
+  const vb = b.replace(/^v/, '');
+
+  const nightlyA = va.match(/^nightly-(\d{8})(?:-(\d+))?$/i);
+  const nightlyB = vb.match(/^nightly-(\d{8})(?:-(\d+))?$/i);
+  if (nightlyA && nightlyB) {
+    const diff = Number(nightlyA[1]) - Number(nightlyB[1]);
+    if (diff !== 0) return diff;
+    return Number(nightlyA[2] || '0') - Number(nightlyB[2] || '0');
+  }
+  if (nightlyA) return 1;
+  if (nightlyB) return -1;
+
+  const pa = va.split(/[.-]/);
+  const pb = vb.split(/[.-]/);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
     const na = Number(pa[i] ?? '0');
     const nb = Number(pb[i] ?? '0');
     if (!Number.isNaN(na) && !Number.isNaN(nb)) {

@@ -10,6 +10,7 @@ import {
   verifyUpdateArtifact,
   parseGithubRelease,
   type VerificationResult,
+  type UpdateArtifact,
 } from '../security/updateVerifier';
 
 import { formatVersion } from '../utils/formatVersion';
@@ -185,8 +186,9 @@ export function AutoUpdate() {
   // Persist the verified artifact's download URL + the downloaded blob
   // URL so the install step can trigger a real file download.
   const [artifactUrl, setArtifactUrl] = useState<string | null>(null);
+  const [verifiedArtifact, setVerifiedArtifact] = useState<UpdateArtifact | null>(null);
   const [downloadedBlobUrl, setDownloadedBlobUrl] = useState<string | null>(null);
-  const [downloadedFileName, setDownloadedFileName] = useState<string>('');
+
 
   // The displayed list — strictly filtered by the active channel,
   // sorted by version descending (highest first).
@@ -242,6 +244,10 @@ export function AutoUpdate() {
       } else if (status.status === 'installing') {
         setPhase('installing');
         setUpdateInfo({ isDownloading: false, isInstalling: true, downloadProgress: 100 });
+      } else if (status.status === 'success') {
+        setPhase('idle');
+        setUpdateInfo({ isDownloading: false, isInstalling: false, downloadProgress: 100 });
+        addDiagnosticLog({ level: 'success', category: 'UPDATE', message: status.message || 'Update installed successfully.' });
       } else if (status.status === 'error') {
         setPhase('idle');
         setUpdateInfo({ isDownloading: false, isInstalling: false });
@@ -275,6 +281,7 @@ export function AutoUpdate() {
   const handleCheckAndDownload = async () => {
     setPhase('checking');
     setVerification(null);
+    setVerifiedArtifact(null);
     setOutcome(null);
     addDiagnosticLog({
       level: 'info',
@@ -437,6 +444,7 @@ export function AutoUpdate() {
 
       // Update store state so the UI reflects the verified version.
       setArtifactUrl(artifact.downloadUrl);
+      setVerifiedArtifact(artifact);
       setUpdateInfo({
         latestVersion: artifact.version,
         updateAvailable: true,
@@ -493,8 +501,6 @@ export function AutoUpdate() {
       setDownloadedBlobUrl(null);
     }
 
-    setDownloadedFileName('CallerFlash-Update.exe');
-
     try {
       const response = await fetch(artifact.downloadUrl);
       if (!response.ok) throw new Error(`Download failed: HTTP ${response.status}`);
@@ -538,26 +544,21 @@ export function AutoUpdate() {
 
   /**
    * One-click install: downloads if needed, then runs the installer.
-   *   • Electron → download in renderer, pass URL to main process which
-   *     downloads + spawns the .exe + quits
+   *   • Electron → send verified artifact metadata to the main process.
+   *     The main process re-downloads, verifies, spawns the .exe + quits.
    *   • Web      → download in renderer, save .exe via blob anchor
    */
   const handleInstall = async () => {
     if (phase === 'installing' || phase === 'downloading') return;
 
-    let finalArtifactUrl = artifactUrl;
-    if (!finalArtifactUrl) {
-      // If the app was restarted and the state lost the artifactUrl, try to find it from the loaded releases
+    let finalArtifact = verifiedArtifact;
+    if (!finalArtifact) {
       const release = channelReleases.find((r) => formatVersion(r.tag_name) === formatVersion(updateInfo.latestVersion));
-      const binary = release?.assets.find((a) => /\.(exe|msi|AppImage|dmg|zip)$/i.test(a.name));
-      if (binary) {
-        finalArtifactUrl = binary.browser_download_url;
-      }
+      finalArtifact = release ? await parseGithubRelease(release) : null;
     }
 
-    if (!finalArtifactUrl) {
+    if (!finalArtifact) {
       addDiagnosticLog({ level: 'info', category: 'UPDATE', message: 'Verifying installer path before installation...' });
-      // Rerun the check sequence to verify the update and populate the artifactUrl securely
       await handleCheckAndDownload();
       return;
     }
@@ -570,18 +571,16 @@ export function AutoUpdate() {
       message: `Installing update ${formatVersion(updateInfo.latestVersion)}…`,
     });
 
-    // Electron: pass the download URL to main process — it downloads,
-    // saves, spawns the installer, and quits the app.
+    // Electron: pass the full verified artifact to main process.
     if (window.callerflash?.updater?.install) {
-      // The main process will emit `updater:status` events which our useEffect below catches.
-      window.callerflash.updater.install(finalArtifactUrl);
+      window.callerflash.updater.install(finalArtifact);
       return;
     }
 
     // Web: ensure we have the file downloaded, then save it.
-    if (!downloadedBlobUrl && finalArtifactUrl) {
+    if (!downloadedBlobUrl && finalArtifact.downloadUrl) {
       addDiagnosticLog({ level: 'info', category: 'UPDATE', message: 'Downloading before install…' });
-      const ok = await runDownload({ version: updateInfo.latestVersion, downloadUrl: finalArtifactUrl });
+      const ok = await runDownload({ version: finalArtifact.version, downloadUrl: finalArtifact.downloadUrl });
       if (!ok) {
         setPhase('idle');
         setUpdateInfo({ isInstalling: false });
@@ -589,32 +588,19 @@ export function AutoUpdate() {
       }
     }
 
-    // Trigger a file save of the downloaded .exe.
     if (downloadedBlobUrl) {
       const a = document.createElement('a');
       a.href = downloadedBlobUrl;
-      a.download = downloadedFileName || `CallerFlash-${updateInfo.latestVersion}.exe`;
+      a.download = `CallerFlash-${finalArtifact.version}.exe`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    } else if (artifactUrl) {
-      window.open(artifactUrl, '_blank');
+    } else if (finalArtifact.downloadUrl) {
+      window.open(finalArtifact.downloadUrl, '_blank');
     }
 
-    setTimeout(() => {
-      setUpdateInfo({
-        isInstalling: false,
-        currentVersion: updateInfo.latestVersion,
-        updateAvailable: false,
-        downloadProgress: 0,
-      });
-      setPhase('idle');
-      addDiagnosticLog({
-        level: 'success',
-        category: 'UPDATE',
-        message: `Update ${formatVersion(updateInfo.latestVersion)} installer saved — run it to complete the update.`,
-      });
-    }, 1000);
+    setPhase('idle');
+    setUpdateInfo({ isInstalling: false });
   };
 
   const openUrl = (url: string) => {

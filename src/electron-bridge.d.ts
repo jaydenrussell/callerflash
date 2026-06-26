@@ -77,15 +77,25 @@ declare global {
   type UpdateChannel = 'stable' | 'beta' | 'nightly';
 
   interface CallerFlashUpdaterStatus {
-    status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error' | 'noop';
+    status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error' | 'noop' | 'success';
     message?: string;
     progress?: number;
+  }
+
+  interface CallerFlashUpdateArtifact {
+    version: string;
+    releaseDate: string;
+    downloadUrl: string;
+    sha256: string;
+    sha256Manifest: string;
+    signatureB64: string;
+    prerelease: boolean;
   }
 
   interface CallerFlashUpdaterApi {
     check: () => Promise<CallerFlashUpdaterStatus>;
     download: () => Promise<CallerFlashUpdaterStatus>;
-    install: (downloadUrl?: string) => void;
+    install: (artifact: CallerFlashUpdateArtifact) => void;
     setChannel: (channel: UpdateChannel) => void;
     onStatus: (callback: (data: CallerFlashUpdaterStatus) => void) => () => void;
   }

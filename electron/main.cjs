@@ -14,11 +14,14 @@ const https = require('https');
 const http = require('http');
 const { spawn } = require('child_process');
 const sipClient = require('./sipClient.cjs');
+const { startUpdaterHelper } = require('./updater-helper.cjs');
+const { downloadAndVerifyUpdateArtifact } = require('./updateVerifier.cjs');
 
 // ── Single-instance lock ───────────────────────────────────────────────
 // If a second copy is launched (double-click on the .exe again, etc.),
 // focus the existing window instead of starting a duplicate.
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+const isUpdaterHelper = process.argv.includes('--updater-helper');
+const gotSingleInstanceLock = isUpdaterHelper ? true : app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
   process.exit(0);
@@ -579,185 +582,68 @@ ipcMain.handle('updater:check', async () => ({ status: 'noop' }));
 ipcMain.handle('updater:download', async () => ({ status: 'noop' }));
 
 /**
- * One-click update: download the installer from the given URL and run it.
- * The installer is saved to the OS temp directory, executed, and the app
- * quits so the installer can replace the running binary.
+ * One-click update: receive verified release metadata from the renderer,
+ * download the installer in the main process, verify the checksum and
+ * detached signature again, then hand off execution to the dedicated
+ * updater helper window.
  */
-ipcMain.on('updater:install', async (_event, downloadUrl) => {
-  // Validate the URL — only allow HTTPS from GitHub's CDN.
-  if (typeof downloadUrl !== 'string' || !downloadUrl.startsWith('https://')) {
-    console.error('[updater] Refusing non-HTTPS download URL:', downloadUrl);
-    return;
-  }
-  const allowedHosts = ['objects.githubusercontent.com', 'github.com', 'releases.githubusercontent.com'];
-  let parsed;
-  try { parsed = new URL(downloadUrl); } catch { return; }
-  if (!allowedHosts.includes(parsed.hostname)) {
-    console.error('[updater] Refusing download from non-allowed host:', parsed.hostname);
+ipcMain.on('updater:install', async (_event, artifact) => {
+  if (!artifact || typeof artifact !== 'object') {
+    console.error('[updater] Refusing malformed install request');
     return;
   }
 
-  // Always use a clean fixed filename to avoid issues with complex
-  // multi-dot names from GitHub (e.g. CallerFlash.Setup.1.5.0-nightly.bfb419d.exe)
-  // where Windows can misparse the extension.
   const tmpDir = app.getPath('temp');
-  const filePath = path.join(tmpDir, 'CallerFlash-Update.exe');
+  const versionTag = String(artifact.version || 'update').replace(/[^a-z0-9._-]/gi, '_');
+  const filePath = path.join(tmpDir, `CallerFlash-${versionTag}.exe`);
 
-  // Notify the renderer that download + install is starting.
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('updater:status', { status: 'downloading', message: 'Downloading update…' });
-  }
-
-  const download = (url) => new Promise((resolve, reject) => {
-    const mod = url.startsWith('https') ? https : http;
-    const request = mod.get(url, { headers: { 'User-Agent': 'CallerFlash-Updater' } }, (response) => {
-      // Follow redirects (GitHub CDN uses 302).
-      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-        download(response.headers.location).then(resolve).catch(reject);
-        return;
-      }
-      if (response.statusCode !== 200) {
-        reject(new Error(`HTTP ${response.statusCode}`));
-        return;
-      }
-      const totalBytes = parseInt(response.headers['content-length'] || '0', 10);
-      let received = 0;
-      const fileStream = fs.createWriteStream(filePath);
-      response.on('data', (chunk) => {
-        received += chunk.length;
-        if (totalBytes > 0 && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('updater:status', {
-            status: 'downloading',
-            progress: Math.round((received / totalBytes) * 100),
-          });
-        }
-      });
-      response.pipe(fileStream);
-      fileStream.on('finish', () => {
-        fileStream.close();
-        resolve(filePath);
-      });
-      fileStream.on('error', (err) => {
-        fs.unlink(filePath, () => {});
-        reject(err);
-      });
+    mainWindow.webContents.send('updater:status', {
+      status: 'downloading',
+      message: 'Downloading and verifying update…',
+      progress: 0,
     });
-    request.on('error', reject);
-    request.setTimeout(300_000, () => { request.destroy(); reject(new Error('Download timeout')); });
-  });
+  }
 
   try {
-    const savedPath = await download(downloadUrl);
-    console.log('[updater] Downloaded to:', savedPath);
-
-    // Verify the file exists and is an .exe before launching.
-    if (!fs.existsSync(savedPath)) {
-      throw new Error('Downloaded file not found at ' + savedPath);
-    }
-    const stats = fs.statSync(savedPath);
-    if (stats.size < 1000000) {
-      throw new Error('Downloaded file is too small (' + stats.size + ' bytes) — likely not a valid installer');
-    }
-    // Ensure the file has .exe extension (Windows needs this to execute it).
-    let execPath = savedPath;
-    if (process.platform === 'win32' && !savedPath.toLowerCase().endsWith('.exe')) {
-      execPath = savedPath + '.exe';
-      fs.renameSync(savedPath, execPath);
-    }
+    const savedPath = await downloadAndVerifyUpdateArtifact(artifact, filePath, (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('updater:status', {
+          status: 'downloading',
+          progress,
+          message: 'Downloading and verifying update…',
+        });
+      }
+    });
 
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('updater:status', { status: 'installing', message: 'Launching installer…' });
+      mainWindow.webContents.send('updater:status', {
+        status: 'installing',
+        message: 'Launching dedicated installer window…',
+      });
     }
 
-    // Launch the installer and quit the app so the installer can replace files.
-    // For NSIS installers, `/S` runs it silently, `/D=...` overrides the install dir.
-    // We pass `/S` to make it a seamless background update.
-    // We also pass `--updated` so the app knows it was just updated and should launch visibly.
-    const args = ['/S', '--updated'];
-    
-    // We need to figure out where the app is installed to pass it to the installer, 
-    // otherwise the silent installer defaults to C:\Program Files (or AppData) and might create a parallel install.
-    // process.execPath is usually `<InstallDir>\CallerFlash.exe`
     const installDir = path.dirname(process.execPath);
-    if (installDir && fs.existsSync(installDir) && !installDir.includes('temp') && !installDir.includes('tmp')) {
-      args.push(`/D=${installDir}`);
-    }
-
-    const safeExecPath = execPath.replace(/\\/g, '\\\\');
-    const safeArgs = args.map(a => a.startsWith('/D=') ? a.replace(/\\/g, '\\\\') : a).join(' ');
-    
-    // Read the logo from the ASAR to embed in the progress window
-    let base64Logo = '';
-    try {
-      const logoPath = path.join(__dirname, '../buildResources/icon.png');
-      base64Logo = 'data:image/png;base64,' + fs.readFileSync(logoPath).toString('base64');
-    } catch { /* ignore missing logo */ }
-
-    // Write a tiny HTML Application (HTA) script to the temp folder. 
-    // HTA allows us to show a beautifully styled, borderless progress window 
-    // that stays open and animated while our main Electron process completely shuts down!
-    const htaContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta http-equiv="x-ua-compatible" content="ie=edge">
-    <title>Updating CallerFlash</title>
-    <HTA:APPLICATION ID="oUpdater" APPLICATIONNAME="Updater" ICON="${process.execPath.replace(/\\/g, '\\\\')}" BORDER="dialog" CAPTION="yes" CONTEXTMENU="no" INNERBORDER="no" MAXIMIZEBUTTON="no" MINIMIZEBUTTON="no" SCROLL="no" SYSMENU="no" SHOWINTASKBAR="yes" SINGLEINSTANCE="yes" />
-    <script>
-        window.resizeTo(420, 160);
-        window.moveTo((screen.width - 420) / 2, (screen.height - 160) / 2);
-        
-        function runUpdate() {
-            var wsh = new ActiveXObject("WScript.Shell");
-            var cmd = '"${safeExecPath}" ${safeArgs}';
-            setTimeout(function() {
-                wsh.Run(cmd, 0, true);
-                window.close();
-            }, 2000);
-        }
-    </script>
-    <style>
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #202020; color: #ffffff; padding: 25px; overflow: hidden; margin: 0; box-sizing: border-box; display: flex; align-items: center; gap: 15px; border: 1px solid #3d3d3d; }
-        .icon { width: 50px; height: 50px; flex-shrink: 0; background: rgba(96, 205, 255, 0.15); border-radius: 12px; padding: 10px; box-sizing: border-box; }
-        .icon img { width: 100%; height: 100%; object-fit: contain; }
-        .content { flex: 1; min-width: 0; }
-        .title { font-weight: 600; font-size: 16px; color: #60cdff; margin-bottom: 4px; }
-        .desc { font-size: 12px; color: #a0a0a0; margin-bottom: 12px; }
-        .loader { width: 100%; height: 4px; background: #1a1a1a; position: relative; overflow: hidden; border-radius: 2px; border: 1px solid #3d3d3d; }
-        .bar { position: absolute; left: -50%; width: 50%; height: 100%; background: #60cdff; animation: slide 1.5s infinite ease-in-out; }
-        @keyframes slide { 0% { left: -50%; } 100% { left: 100%; } }
-    </style>
-    </head>
-    <body onload="runUpdate()">
-        <div class="icon">
-           <img src="${base64Logo}" />
-        </div>
-        <div class="content">
-          <div class="title">Installing Update...</div>
-          <div class="desc">Please wait, CallerFlash will restart automatically.</div>
-          <div class="loader"><div class="bar"></div></div>
-        </div>
-    </body>
-    </html>
-    `;
-
-    const htaPath = path.join(tmpDir, 'CallerFlash-Updater.hta');
-    fs.writeFileSync(htaPath, htaContent, 'utf8');
-
-    // Launch the HTA window detached.
-    const child = spawn('mshta.exe', [htaPath], {
+    const helperEnv = {
+      ...process.env,
+      CALLERFLASH_INSTALLER_PATH: savedPath,
+      CALLERFLASH_INSTALL_DIR: installDir,
+      CALLERFLASH_APP_PATH: process.execPath,
+      CALLERFLASH_UPDATE_VERSION: String(artifact.version || ''),
+    };
+    const helper = spawn(process.execPath, ['--updater-helper'], {
       detached: true,
       stdio: 'ignore',
       shell: false,
+      windowsHide: true,
+      env: helperEnv,
     });
-    child.unref();
+    helper.unref();
 
-    // Give the app time to flush state and fully exit before the
-    // installer starts replacing files. 2s is generous but safe.
     setTimeout(() => {
       isQuitting = true;
       app.quit();
-    }, 500);
+    }, 250);
   } catch (err) {
     console.error('[updater] Install failed:', err.message);
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -792,10 +678,17 @@ ipcMain.on('tray:set-update-available', (_event, version) => {
 });
 
 // ── Second-instance handler ────────────────────────────────────────────
-app.on('second-instance', () => showWindow());
+if (!isUpdaterHelper) {
+  app.on('second-instance', () => showWindow());
+}
 
 // ── App lifecycle ──────────────────────────────────────────────────────
 app.whenReady().then(() => {
+  if (isUpdaterHelper) {
+    startUpdaterHelper();
+    return;
+  }
+
   createWindow();
   createTray();
 
