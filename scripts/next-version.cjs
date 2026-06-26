@@ -129,14 +129,28 @@ function nextBeta(tags, baseVer) {
   return `${currentBase}-beta.${maxN + 1}`;
 }
 
-function nextNightly() {
+function nextNightly(tags) {
   // Nightly uses a simple date code: nightly-YYYYMMDD
-  // One build per day — the date is deterministic for any commit on that day.
+  // Multiple builds in a day append an auto-incrementing suffix: nightly-YYYYMMDD-1
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, '0');
   const d = String(now.getDate()).padStart(2, '0');
-  return `nightly-${y}${m}${d}`;
+  const prefix = `nightly-${y}${m}${d}`;
+
+  let max = -1;
+  for (const t of tags) {
+    const clean = t.replace(/^v/, '');
+    if (clean === prefix) {
+      if (0 > max) max = 0;
+    } else if (clean.startsWith(`${prefix}-`)) {
+      const num = parseInt(clean.slice(prefix.length + 1), 10);
+      if (!isNaN(num) && num > max) max = num;
+    }
+  }
+
+  if (max === -1) return prefix; // First build of the day
+  return `${prefix}-${max + 1}`; // Subsequent builds
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────
@@ -156,7 +170,7 @@ try {
   } else if (channel === 'beta') {
     result = nextBeta(gitTags(), baseVer);
   } else if (channel === 'nightly') {
-    result = nextNightly();
+    result = nextNightly(gitTags());
   } else {
     console.error(`Unknown channel: ${channel} (expected: stable | beta | nightly)`);
     process.exit(1);

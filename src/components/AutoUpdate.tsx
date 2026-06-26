@@ -68,10 +68,18 @@ function compareVersions(a: string, b: string): number {
   const va = formatVersion(a);
   const vb = formatVersion(b);
 
-  // Handle nightly date codes.
-  const nightlyA = va.match(/^nightly-(\d{8})$/);
-  const nightlyB = vb.match(/^nightly-(\d{8})$/);
-  if (nightlyA && nightlyB) return parseInt(nightlyA[1]) - parseInt(nightlyB[1]);
+  // Handle nightly date codes (with optional -N increment suffix for multiple builds per day).
+  const nightlyA = va.match(/^nightly-(\d{8})(?:-(\d+))?$/);
+  const nightlyB = vb.match(/^nightly-(\d{8})(?:-(\d+))?$/);
+  
+  if (nightlyA && nightlyB) {
+    const diff = parseInt(nightlyA[1]) - parseInt(nightlyB[1]);
+    if (diff !== 0) return diff;
+    const incA = parseInt(nightlyA[2] || '0');
+    const incB = parseInt(nightlyB[2] || '0');
+    return incA - incB;
+  }
+  
   if (nightlyA) return 1;  // nightly is always newer than semver
   if (nightlyB) return -1;
 
@@ -116,7 +124,7 @@ function matchesChannel(
   if (channel === 'stable') return !release.prerelease;
   const tag = release.tag_name;
   if (channel === 'beta') return /-beta(\.|$)/.test(tag);
-  if (channel === 'nightly') return /^v?nightly-\d{8}$/i.test(tag);
+  if (channel === 'nightly') return /^v?nightly-\d{8}(?:-\d+)?$/i.test(tag);
   return false;
 }
 
