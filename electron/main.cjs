@@ -52,11 +52,45 @@ let updateAvailableVersion = null;
 // Prevents the window `close` interceptor from trapping a real shutdown.
 let isQuitting = false;
 
+// ── Window State Management ────────────────────────────────────────────
+const MAIN_WINDOW_DEFAULT = { x: null, y: null, width: 1000, height: 700 };
+
+function mainWindowStatePath() {
+  return path.join(app.getPath('userData'), 'main-window-state.json');
+}
+
+function loadMainWindowState() {
+  try {
+    const p = mainWindowStatePath();
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {
+    // Corrupt or unreadable — fall through to defaults.
+  }
+  return null;
+}
+
+function saveMainWindowState() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    const [x, y] = mainWindow.getPosition();
+    const [w, h] = mainWindow.getSize();
+    fs.writeFileSync(
+      mainWindowStatePath(),
+      JSON.stringify({ x, y, width: w, height: h }),
+      'utf8'
+    );
+  } catch {
+    // Don't crash the app over a state-write failure.
+  }
+}
+
 // ── Window creation ────────────────────────────────────────────────────
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 700,
+  const state = { ...MAIN_WINDOW_DEFAULT, ...(loadMainWindowState() || {}) };
+  
+  const opts = {
+    width: state.width,
+    height: state.height,
     minWidth: 360,
     minHeight: 400,
     title: 'CallerFlash',
@@ -79,7 +113,16 @@ function createWindow() {
       sandbox: true,
       preload: path.join(__dirname, 'preload.cjs'),
     }
-  });
+  };
+
+  // Only pass x/y when we actually have a saved position; otherwise
+  // let Electron choose (center-ish on the primary display).
+  if (Number.isFinite(state.x) && Number.isFinite(state.y)) {
+    opts.x = state.x;
+    opts.y = state.y;
+  }
+
+  mainWindow = new BrowserWindow(opts);
 
   // Load the single-file output from Vite
   mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -101,10 +144,18 @@ function createWindow() {
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
+      saveMainWindowState();
       mainWindow.hide();
       notifyRenderer('window:hidden-to-tray');
+    } else {
+      saveMainWindowState();
     }
   });
+
+  // Persist position + size on move / resize so the window restores exactly
+  // where the user left it, even if they never "close" the app gracefully.
+  mainWindow.on('resize', saveMainWindowState);
+  mainWindow.on('move', saveMainWindowState);
 }
 
 // ── Tray icon + menu ───────────────────────────────────────────────────
