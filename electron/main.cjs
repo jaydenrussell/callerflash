@@ -630,7 +630,20 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
     }
 
     // Launch the installer and quit the app so the installer can replace files.
-    const child = spawn(execPath, [], {
+    // For NSIS installers, `/S` runs it silently, `/D=...` overrides the install dir.
+    // We pass `/S` to make it a seamless background update.
+    // We also pass `--updated` so the app knows it was just updated and should launch visibly.
+    const args = ['/S', '--updated'];
+    
+    // We need to figure out where the app is installed to pass it to the installer, 
+    // otherwise the silent installer defaults to C:\Program Files (or AppData) and might create a parallel install.
+    // process.execPath is usually `<InstallDir>\CallerFlash.exe`
+    const installDir = path.dirname(process.execPath);
+    if (installDir && fs.existsSync(installDir) && !installDir.includes('temp') && !installDir.includes('tmp')) {
+      args.push(`/D=${installDir}`);
+    }
+
+    const child = spawn(execPath, args, {
       detached: true,
       stdio: 'ignore',
       shell: false,
