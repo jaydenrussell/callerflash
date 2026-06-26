@@ -161,20 +161,20 @@ function createWindow() {
 // ── Tray icon + menu ───────────────────────────────────────────────────
 function loadTrayIcon() {
   // Tray-specific icon (transparent background). In a packaged build the
-  // build/ directory is NOT inside app.asar — extraResources copies the
+  // buildResources/ directory is NOT inside app.asar — extraResources copies the
   // files into process.resourcesPath. Try the packaged location first,
   // then fall back to the source-tree location (dev mode).
   const resPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
   const candidates = [
     path.join(resPath, 'cflogo.ico'),
     path.join(resPath, 'cflogo.png'),
-    path.join(__dirname, '../build/cflogo.ico'),
-    path.join(__dirname, '../build/cflogo.png'),
-    path.join(__dirname, '../build/tray-icon.ico'),
-    path.join(__dirname, '../build/tray-icon.png'),
-    path.join(__dirname, '../build/Untitled.png'),
-    path.join(__dirname, '../build/icon.ico'),
-    path.join(__dirname, '../build/icon.png'),
+    path.join(__dirname, '../buildResources/cflogo.ico'),
+    path.join(__dirname, '../buildResources/cflogo.png'),
+    path.join(__dirname, '../buildResources/tray-icon.ico'),
+    path.join(__dirname, '../buildResources/tray-icon.png'),
+    path.join(__dirname, '../buildResources/Untitled.png'),
+    path.join(__dirname, '../buildResources/icon.ico'),
+    path.join(__dirname, '../buildResources/icon.png'),
   ];
   for (const iconPath of candidates) {
     try {

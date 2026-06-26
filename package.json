@@ -43,7 +43,7 @@
     "productName": "CallerFlash",
     "directories": {
       "output": "release",
-      "buildResources": "build"
+      "buildResources": "buildResources"
     },
     "files": [
       "dist/**/*",
@@ -60,7 +60,7 @@
           ]
         }
       ],
-      "icon": "build/icon.ico"
+      "icon": "buildResources/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -70,19 +70,19 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "CallerFlash",
-      "installerIcon": "build/cflogo.ico",
-      "uninstallerIcon": "build/cflogo.ico",
-      "installerHeaderIcon": "build/cflogo.ico",
+      "installerIcon": "buildResources/cflogo.ico",
+      "uninstallerIcon": "buildResources/cflogo.ico",
+      "installerHeaderIcon": "buildResources/cflogo.ico",
       "runAfterFinish": true
     },
     "publish": null,
     "extraResources": [
       {
-        "from": "build/cflogo.ico",
+        "from": "buildResources/cflogo.ico",
         "to": "cflogo.ico"
       },
       {
-        "from": "build/cflogo.png",
+        "from": "buildResources/cflogo.png",
         "to": "cflogo.png"
       }
     ],
@@ -110,7 +110,7 @@
           "desktopName": "callerflash"
         }
       },
-      "icon": "build/icon.png"
+      "icon": "buildResources/icon.png"
     }
   }
 }
