@@ -689,7 +689,7 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
     // Read the logo from the ASAR to embed in the progress window
     let base64Logo = '';
     try {
-      const logoPath = path.join(__dirname, '../buildResources/cflogo.png');
+      const logoPath = path.join(__dirname, '../buildResources/icon.png');
       base64Logo = 'data:image/png;base64,' + fs.readFileSync(logoPath).toString('base64');
     } catch { /* ignore missing logo */ }
 

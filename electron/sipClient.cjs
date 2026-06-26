@@ -57,6 +57,7 @@ function sendRegister(callbacks) {
       cseq: { method: 'REGISTER', seq: cseq++ },
       contact: [{ uri: createContactUri() }],
       expires: currentConfig.registerExpiry || 300,
+      'user-agent': 'CallerFlash',
     }
   };
 
@@ -141,6 +142,8 @@ function connect(config, callbacks) {
         // Reject automatically (CallerFlash is just a monitor, it doesn't answer audio)
         // 486 Busy Here is appropriate for a monitor that doesn't accept the call.
         const rs = sip.makeResponse(rq, 486, 'Busy Here');
+        if (!rs.headers) rs.headers = {};
+        rs.headers['user-agent'] = 'CallerFlash';
         client.send(rs);
       }
     });
@@ -183,6 +186,7 @@ function disconnect() {
           cseq: { method: 'REGISTER', seq: cseq++ },
           contact: [{ uri: createContactUri() }],
           expires: 0, // 0 = unregister
+          'user-agent': 'CallerFlash',
         }
       };
       

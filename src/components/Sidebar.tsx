@@ -5,6 +5,7 @@ import {
 import { useAppStore, type TabId } from '../store/useAppStore';
 import { cn } from '../utils/cn';
 import { formatVersion } from '../utils/formatVersion';
+import logoUrl from '../assets/icon.png';
 
 const navItems: { id: TabId; label: string; icon: React.ComponentType<any> }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -46,10 +47,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
         {/* Compact App Header */}
         <div className="px-3 py-4 border-b border-win-border flex justify-center">
           <div
-            className="w-8 h-8 rounded-lg bg-gradient-to-br from-win-accent to-blue-600 flex items-center justify-center shadow-lg"
+            className="w-8 h-8 flex items-center justify-center flex-shrink-0 drop-shadow-md"
             title="CallerFlash"
           >
-            <Phone className="w-4 h-4 text-white" />
+            <img src={logoUrl} alt="CallerFlash" className="w-full h-full object-contain" />
           </div>
         </div>
 
@@ -111,8 +112,8 @@ export function Sidebar({ collapsed }: SidebarProps) {
       {/* App Header */}
       <div className="p-4 border-b border-win-border">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-win-accent to-blue-600 flex items-center justify-center shadow-lg flex-shrink-0">
-            <Phone className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 flex items-center justify-center flex-shrink-0 drop-shadow-md">
+            <img src={logoUrl} alt="CallerFlash" className="w-full h-full object-contain" />
           </div>
           <div className="min-w-0">
             <h1 className="text-base font-bold text-win-text tracking-tight truncate">CallerFlash</h1>
