@@ -131,10 +131,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
           )}
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-win-text truncate">
-              {sipConnected ? 'Connected' : 'Disconnected'}
+              {sipRegistered ? 'Registered' : sipConnected ? 'Connected' : 'Disconnected'}
             </p>
             <p className="text-xs text-win-text-tertiary truncate">
-              {sipRegistered ? 'Registered' : sipConnected ? 'Registering...' : 'Offline'}
+              {sipRegistered ? 'Active Session' : sipConnected ? 'Registering...' : 'Offline'}
             </p>
           </div>
           <div className={cn(

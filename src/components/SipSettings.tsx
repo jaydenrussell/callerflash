@@ -213,6 +213,16 @@ export function SipSettings() {
           <p className="text-xs text-win-text-secondary mt-0.5">Connection parameters for your SIP provider</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {sipConnected && (
+            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium mr-1 ${
+              sipRegistered 
+                ? 'bg-win-success/10 border-win-success/20 text-win-success'
+                : 'bg-win-warning/10 border-win-warning/20 text-win-warning'
+            }`}>
+              {sipRegistered ? <ShieldCheck className="w-3.5 h-3.5" /> : <div className="w-3.5 h-3.5 border-2 border-win-warning border-t-transparent rounded-full animate-spin" />}
+              {sipRegistered ? 'Registered' : 'Registering...'}
+            </div>
+          )}
           <button
             onClick={handleConnectToggle}
             disabled={isConnecting}
