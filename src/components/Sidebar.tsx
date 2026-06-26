@@ -11,7 +11,7 @@ const navItems: { id: TabId; label: string; icon: React.ComponentType<any> }[] =
   { id: 'calls', label: 'Call History', icon: Phone },
   { id: 'settings', label: 'SIP Settings', icon: Settings },
   { id: 'preferences', label: 'Preferences', icon: Sliders },
-  { id: 'toast', label: 'Toast Config', icon: Bell },
+  { id: 'toast', label: 'Notifications', icon: Bell },
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
   { id: 'update', label: 'Updates', icon: RefreshCw },
   { id: 'about', label: 'About', icon: Info },

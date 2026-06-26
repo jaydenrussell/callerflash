@@ -66,7 +66,7 @@ export function ToastSettings() {
     <div className="space-y-4 animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-xl font-bold text-win-text">Toast Configuration</h2>
+          <h2 className="text-xl font-bold text-win-text">Notifications</h2>
           <p className="text-xs text-win-text-secondary mt-0.5">
             Changes save automatically — drag the live toast to set a custom position.
           </p>

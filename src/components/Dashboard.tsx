@@ -1,21 +1,19 @@
 import { useEffect, useState } from 'react';
 import {
   Phone, PhoneIncoming, PhoneMissed, PhoneOff,
-  Wifi, WifiOff, Bell, Clipboard, Clock, Activity,
+  Wifi, Bell, Clipboard, Clock, Activity,
   Zap, TrendingUp, Shield, EyeOff, Info
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { simulateIncomingCall } from '../utils/simulateIncomingCall';
 
 export function Dashboard() {
   const {
-    sipConnected, sipRegistered, setSipConnected, setSipRegistered,
+    sipConnected, sipRegistered,
     callHistory, addDiagnosticLog, toastConfig, clipboardText,
     appPreferences, isMinimized, setIsMinimized, sipConfig,
   } = useAppStore();
 
   const [uptime, setUptime] = useState(0);
-  const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -30,30 +28,6 @@ export function Dashboard() {
     const sec = s % 60;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
-
-  const handleConnect = () => {
-    if (sipConnected) {
-      setSipConnected(false);
-      setSipRegistered(false);
-      setUptime(0);
-      addDiagnosticLog({ level: 'warning', category: 'SIP', message: 'SIP disconnected by user' });
-      return;
-    }
-    setIsConnecting(true);
-    addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Initiating SIP connection…' });
-    setTimeout(() => {
-      setSipConnected(true);
-      addDiagnosticLog({ level: 'success', category: 'SIP', message: 'TCP connection established on port 5060' });
-      setTimeout(() => {
-        setSipRegistered(true);
-        setIsConnecting(false);
-        addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER 200 OK (expires=300s)' });
-        addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Ready for incoming calls' });
-      }, 1200);
-    }, 800);
-  };
-
-  const triggerTestCall = () => simulateIncomingCall('dashboard');
 
   const hideToTray = () => {
     setIsMinimized(true);
@@ -71,41 +45,6 @@ export function Dashboard() {
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-win-text">Dashboard</h2>
           <p className="text-xs text-win-text-secondary mt-0.5">Monitor & control</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={triggerTestCall}
-            className="flex items-center gap-2 px-3 py-1.5 bg-win-accent/15 hover:bg-win-accent/25 text-win-accent rounded-lg text-xs font-medium transition-colors border border-win-accent/20"
-          >
-            <PhoneIncoming className="w-3.5 h-3.5" />
-            Simulate Call
-          </button>
-          <button
-            onClick={handleConnect}
-            disabled={isConnecting}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              sipConnected
-                ? 'bg-win-error/15 hover:bg-win-error/25 text-win-error border border-win-error/20'
-                : 'bg-win-success/15 hover:bg-win-success/25 text-win-success border border-win-success/20'
-            } disabled:opacity-50`}
-          >
-            {isConnecting ? (
-              <>
-                <div className="w-3.5 h-3.5 border-2 border-win-accent border-t-transparent rounded-full animate-spin" />
-                Connecting…
-              </>
-            ) : sipConnected ? (
-              <>
-                <WifiOff className="w-3.5 h-3.5" />
-                Disconnect
-              </>
-            ) : (
-              <>
-                <Wifi className="w-3.5 h-3.5" />
-                Connect
-              </>
-            )}
-          </button>
         </div>
       </div>
 
@@ -177,11 +116,6 @@ export function Dashboard() {
             Quick actions
           </h3>
           <div className="space-y-1">
-            <QuickAction
-              icon={<PhoneIncoming className="w-3.5 h-3.5" />}
-              label="Simulate call"
-              onClick={triggerTestCall}
-            />
             <QuickAction
               icon={<Activity className="w-3.5 h-3.5" />}
               label="SIP diagnostics"

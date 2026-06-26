@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Server, Lock, Save, RotateCcw,
-  ChevronDown, Eye, EyeOff, ShieldCheck
+  ChevronDown, Eye, EyeOff, ShieldCheck, Wifi, WifiOff
 } from 'lucide-react';
 import { useAppStore, type SipConfig } from '../store/useAppStore';
 import { sanitizeSipServer } from '../security/secretRedactor';
@@ -130,10 +130,14 @@ export function SipSettings() {
     sipConfig,
     setSipConfig,
     addDiagnosticLog,
+    sipConnected,
+    setSipConnected,
+    setSipRegistered,
   } = useAppStore();
   const [localConfig, setLocalConfig] = useState<SipConfig>({ ...sipConfig });
   const [showPassword, setShowPassword] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   // Custom mode is on if the current server isn't in the known list
   const isCustomServer = !knownServerValues.has(localConfig.server);
@@ -153,6 +157,31 @@ export function SipSettings() {
     }
   };
 
+  const attemptConnect = () => {
+    setIsConnecting(true);
+    addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Initiating SIP connection…' });
+    setTimeout(() => {
+      setSipConnected(true);
+      addDiagnosticLog({ level: 'success', category: 'SIP', message: 'TCP connection established on port 5060' });
+      setTimeout(() => {
+        setSipRegistered(true);
+        setIsConnecting(false);
+        addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER 200 OK (expires=300s)' });
+        addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Ready for incoming calls' });
+      }, 1200);
+    }, 800);
+  };
+
+  const handleConnectToggle = () => {
+    if (sipConnected) {
+      setSipConnected(false);
+      setSipRegistered(false);
+      addDiagnosticLog({ level: 'warning', category: 'SIP', message: 'SIP disconnected by user' });
+      return;
+    }
+    attemptConnect();
+  };
+
   const handleSave = () => {
     setSipConfig(localConfig);
     setSaved(true);
@@ -163,6 +192,11 @@ export function SipSettings() {
       message: 'SIP configuration saved',
       details: `Server: ${localConfig.server}:${localConfig.port}, Protocol: ${localConfig.protocol}`,
     });
+    
+    // Auto-connect on save if not connected
+    if (!sipConnected) {
+      attemptConnect();
+    }
   };
 
   const handleReset = () => {
@@ -196,6 +230,32 @@ export function SipSettings() {
           <p className="text-xs text-win-text-secondary mt-0.5">Connection parameters for your SIP provider</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleConnectToggle}
+            disabled={isConnecting}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+              sipConnected
+                ? 'bg-win-error/15 hover:bg-win-error/25 text-win-error border border-win-error/20'
+                : 'bg-win-success/15 hover:bg-win-success/25 text-win-success border border-win-success/20'
+            } disabled:opacity-50`}
+          >
+            {isConnecting ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-win-accent border-t-transparent rounded-full animate-spin" />
+                Connecting…
+              </>
+            ) : sipConnected ? (
+              <>
+                <WifiOff className="w-4 h-4" />
+                Disconnect
+              </>
+            ) : (
+              <>
+                <Wifi className="w-4 h-4" />
+                Connect
+              </>
+            )}
+          </button>
           <button
             onClick={handleReset}
             className="flex items-center gap-2 px-3 py-1.5 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm font-medium transition-colors border border-win-border"
