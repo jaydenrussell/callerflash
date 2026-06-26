@@ -380,6 +380,79 @@ export default function App() {
     return () => off?.();
   }, [setActiveTab]);
 
+  // Listen for Real SIP Backend Status Events
+  useEffect(() => {
+    if (!window.callerflash?.sip?.onStatus) return;
+    return window.callerflash.sip.onStatus((data) => {
+      if (data.status === 'registered') {
+        useAppStore.setState({ sipRegistered: true, isConnecting: false });
+        addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER 200 OK (Registration active)' });
+        addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Ready for incoming calls' });
+      } else if (data.status === 'error') {
+        useAppStore.setState({ sipRegistered: false, isConnecting: false });
+        addDiagnosticLog({ level: 'error', category: 'SIP', message: `SIP Error: ${data.message}` });
+      }
+    });
+  }, [addDiagnosticLog]);
+
+  // Listen for Real SIP Inbound Calls
+  useEffect(() => {
+    if (!window.callerflash?.sip?.onInvite) return;
+    return window.callerflash.sip.onInvite((callerData) => {
+      const { toastConfig } = useAppStore.getState();
+      const safeNumber = callerData.callerNumber;
+      const safeName = callerData.callerName || '';
+
+      const record = {
+        id: crypto.randomUUID(),
+        callerNumber: safeNumber,
+        callerName: safeName,
+        timestamp: new Date(),
+        duration: 0,
+        direction: 'inbound' as const,
+        status: 'answered' as const,
+      };
+
+      useAppStore.getState().addCallRecord(record);
+
+      addDiagnosticLog({
+        level: 'info',
+        category: 'SIP',
+        message: `INVITE received from ${safeNumber} (${safeName})`,
+        details: `Source: SIP Backend Network Engine`,
+      });
+
+      // Show the toast!
+      if (window.callerflash?.toast?.show) {
+        window.callerflash.toast.show({
+          id: record.id,
+          callerNumber: record.callerNumber,
+          callerName: record.callerName,
+          timestamp: record.timestamp.toISOString(),
+          config: {
+            duration: toastConfig.duration,
+            backgroundColor: toastConfig.backgroundColor,
+            accentColor: toastConfig.accentColor,
+            textColor: toastConfig.textColor,
+            borderRadius: toastConfig.borderRadius,
+            opacity: toastConfig.opacity,
+            fontFamily: toastConfig.fontFamily,
+            fontSize: toastConfig.fontSize,
+            autoCopyToClipboard: toastConfig.autoCopyToClipboard,
+            showCallerName: toastConfig.showCallerName,
+            showTimestamp: toastConfig.showTimestamp,
+            maxWidth: toastConfig.maxWidth,
+          },
+        });
+      }
+      
+      // Native notification fallback
+      if (window.callerflash?.notify?.show) {
+        window.callerflash.notify.show('Incoming Call', `${safeNumber}${safeName ? ` - ${safeName}` : ''}`);
+      }
+    });
+  }, [addDiagnosticLog]);
+
   // Push the current SIP status to main so the tray tooltip + "SIP: …"
   // menu item stay current. Cheap — just a string IPC send.
   useEffect(() => {

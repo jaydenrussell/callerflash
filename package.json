@@ -19,9 +19,11 @@
   },
   "dependencies": {
     "clsx": "2.1.1",
+    "ip": "^2.0.1",
     "lucide-react": "^1.21.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
+    "sip": "^0.0.6",
     "tailwind-merge": "3.6.0",
     "zustand": "^5.0.14"
   },

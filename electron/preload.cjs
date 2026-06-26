@@ -87,6 +87,22 @@ contextBridge.exposeInMainWorld('callerflash', {
     },
   },
 
+  // ── SIP Engine ──────────────────────────────────────────────────
+  sip: {
+    connect: (config) => ipcRenderer.invoke('sip:connect', config),
+    disconnect: () => ipcRenderer.invoke('sip:disconnect'),
+    onStatus: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('sip:status', handler);
+      return () => ipcRenderer.removeListener('sip:status', handler);
+    },
+    onInvite: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('sip:invite', handler);
+      return () => ipcRenderer.removeListener('sip:invite', handler);
+    },
+  },
+
   // ── Platform info ───────────────────────────────────────────────
   platform: {
     isElectron: true,

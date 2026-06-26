@@ -261,21 +261,37 @@ export const useAppStore = create<AppState>((set) => ({
     s.setIsConnecting(true);
     s.addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Initiating SIP connection…' });
     
-    setTimeout(() => {
-      useAppStore.setState({ sipConnected: true });
-      s.addDiagnosticLog({ level: 'success', category: 'SIP', message: 'TCP connection established on port 5060' });
-      
+    if (window.callerflash?.sip?.connect) {
+      window.callerflash.sip.connect(s.sipConfig).then((res) => {
+        if (!res.success) {
+          useAppStore.setState({ isConnecting: false });
+        } else {
+          useAppStore.setState({ sipConnected: true });
+          s.addDiagnosticLog({ level: 'success', category: 'SIP', message: 'Connection established to ' + s.sipConfig.server });
+        }
+      });
+    } else {
+      // Mock behavior for web browser dev fallback
       setTimeout(() => {
-        useAppStore.setState({ sipRegistered: true, isConnecting: false });
-        s.addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER 200 OK (expires=300s)' });
-        s.addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Ready for incoming calls' });
-      }, 1200);
-    }, 800);
+        useAppStore.setState({ sipConnected: true });
+        s.addDiagnosticLog({ level: 'success', category: 'SIP', message: 'TCP connection established on port 5060' });
+        
+        setTimeout(() => {
+          useAppStore.setState({ sipRegistered: true, isConnecting: false });
+          s.addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER 200 OK (expires=300s)' });
+          s.addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Ready for incoming calls' });
+        }, 1200);
+      }, 800);
+    }
   },
   disconnectSip: () => {
     const s = useAppStore.getState();
     if (!s.sipConnected) return;
     
+    if (window.callerflash?.sip?.disconnect) {
+      window.callerflash.sip.disconnect();
+    }
+
     s.setSipConnected(false);
     s.setSipRegistered(false);
     s.setIsConnecting(false);

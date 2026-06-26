@@ -13,6 +13,7 @@ const fs = require('fs');
 const https = require('https');
 const http = require('http');
 const { spawn } = require('child_process');
+const sipClient = require('./sipClient.cjs');
 
 // ── Single-instance lock ───────────────────────────────────────────────
 // If a second copy is launched (double-click on the .exe again, etc.),
@@ -311,6 +312,40 @@ function toggleWindow() {
   if (visible) hideWindow();
   else showWindow();
 }
+
+// ── IPC: SIP Engine (Real network backend) ─────────────────────────────
+ipcMain.handle('sip:connect', async (_event, config) => {
+  return new Promise((resolve) => {
+    sipClient.connect(config, {
+      onConnected: () => {
+        // TCP/UDP socket bound
+      },
+      onRegistered: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('sip:status', { status: 'registered' });
+        }
+        resolve({ success: true });
+      },
+      onError: (message) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('sip:status', { status: 'error', message });
+        }
+        resolve({ success: false, message });
+      },
+      onInvite: (callerData) => {
+        // Incoming call hit the wire! Trigger toast.
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('sip:invite', callerData);
+        }
+      }
+    });
+  });
+});
+
+ipcMain.handle('sip:disconnect', async () => {
+  sipClient.disconnect();
+  return { success: true };
+});
 
 // Send an event to the renderer so it can keep its UI in sync
 // (e.g., swap MinimizedShell for the full UI when restored from tray).
