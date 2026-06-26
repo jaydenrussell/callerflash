@@ -131,13 +131,13 @@ export function SipSettings() {
     setSipConfig,
     addDiagnosticLog,
     sipConnected,
-    setSipConnected,
-    setSipRegistered,
+    isConnecting,
+    connectSip,
+    disconnectSip,
   } = useAppStore();
   const [localConfig, setLocalConfig] = useState<SipConfig>({ ...sipConfig });
   const [showPassword, setShowPassword] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
 
   // Custom mode is on if the current server isn't in the known list
   const isCustomServer = !knownServerValues.has(localConfig.server);
@@ -157,29 +157,12 @@ export function SipSettings() {
     }
   };
 
-  const attemptConnect = () => {
-    setIsConnecting(true);
-    addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Initiating SIP connection…' });
-    setTimeout(() => {
-      setSipConnected(true);
-      addDiagnosticLog({ level: 'success', category: 'SIP', message: 'TCP connection established on port 5060' });
-      setTimeout(() => {
-        setSipRegistered(true);
-        setIsConnecting(false);
-        addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER 200 OK (expires=300s)' });
-        addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Ready for incoming calls' });
-      }, 1200);
-    }, 800);
-  };
-
   const handleConnectToggle = () => {
     if (sipConnected) {
-      setSipConnected(false);
-      setSipRegistered(false);
-      addDiagnosticLog({ level: 'warning', category: 'SIP', message: 'SIP disconnected by user' });
+      disconnectSip();
       return;
     }
-    attemptConnect();
+    connectSip();
   };
 
   const handleSave = () => {
@@ -194,8 +177,8 @@ export function SipSettings() {
     });
     
     // Auto-connect on save if not connected
-    if (!sipConnected) {
-      attemptConnect();
+    if (!sipConnected && localConfig.server && localConfig.username && localConfig.password) {
+      connectSip();
     }
   };
 

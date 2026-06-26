@@ -274,7 +274,7 @@ function MiniStat({
 }
 
 export default function App() {
-  const { isMinimized, setIsMinimized, addDiagnosticLog, appPreferences, sipConnected, sipRegistered, setActiveTab, sipConfig, setSipConnected } = useAppStore();
+  const { isMinimized, setIsMinimized, addDiagnosticLog, appPreferences, sipConnected, sipRegistered, setActiveTab, sipConfig } = useAppStore();
   const width = useWindowWidth();
   const sidebarCollapsed = width < SIDEBAR_COLLAPSE_BREAKPOINT;
   const titleCompact = width < 520;
@@ -346,20 +346,12 @@ export default function App() {
       // Delay slightly to let the store hydrate from safeStorage
       const t = setTimeout(() => {
         addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Auto-connecting to SIP server on startup...' });
-        
-        // This reproduces the connection flow from Dashboard.tsx / SipSettings.tsx
-        setSipConnected(true);
-        addDiagnosticLog({ level: 'success', category: 'SIP', message: 'TCP connection established on port 5060' });
-        setTimeout(() => {
-          useAppStore.setState({ sipRegistered: true });
-          addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER 200 OK (expires=300s)' });
-          addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Ready for incoming calls' });
-        }, 1200);
+        useAppStore.getState().connectSip();
       }, 1500);
       
       return () => clearTimeout(t);
     }
-  }, []);
+  }, [sipConfig.password]);
 
   // Subscribe to tray → renderer events. The main process fires these
   // when the user clicks the tray icon (left-click toggle or "Show/Hide"

@@ -121,6 +121,10 @@ interface AppState {
   setSipConfig: (config: Partial<SipConfig>) => void;
   setSipConnected: (connected: boolean) => void;
   setSipRegistered: (registered: boolean) => void;
+  isConnecting: boolean;
+  setIsConnecting: (connecting: boolean) => void;
+  connectSip: () => void;
+  disconnectSip: () => void;
 
   toastConfig: ToastConfig;
   setToastConfig: (config: Partial<ToastConfig>) => void;
@@ -248,6 +252,35 @@ export const useAppStore = create<AppState>((set) => ({
   }),
   setSipConnected: (connected) => set({ sipConnected: connected }),
   setSipRegistered: (registered) => set({ sipRegistered: registered }),
+  isConnecting: false,
+  setIsConnecting: (connecting) => set({ isConnecting: connecting }),
+  connectSip: () => {
+    const s = useAppStore.getState();
+    if (s.sipConnected || s.isConnecting) return;
+    
+    s.setIsConnecting(true);
+    s.addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Initiating SIP connection…' });
+    
+    setTimeout(() => {
+      useAppStore.setState({ sipConnected: true });
+      s.addDiagnosticLog({ level: 'success', category: 'SIP', message: 'TCP connection established on port 5060' });
+      
+      setTimeout(() => {
+        useAppStore.setState({ sipRegistered: true, isConnecting: false });
+        s.addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER 200 OK (expires=300s)' });
+        s.addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Ready for incoming calls' });
+      }, 1200);
+    }, 800);
+  },
+  disconnectSip: () => {
+    const s = useAppStore.getState();
+    if (!s.sipConnected) return;
+    
+    s.setSipConnected(false);
+    s.setSipRegistered(false);
+    s.setIsConnecting(false);
+    s.addDiagnosticLog({ level: 'warning', category: 'SIP', message: 'SIP disconnected by user' });
+  },
 
   toastConfig: defaultToastConfig,
   setToastConfig: (config) => set((s) => {
