@@ -94,6 +94,7 @@ declare global {
     connect: (config: any) => Promise<{ success: boolean; message?: string }>;
     disconnect: () => Promise<{ success: boolean }>;
     onStatus: (callback: (data: { status: string; message?: string }) => void) => () => void;
+    onLog: (callback: (data: { message: string }) => void) => () => void;
     onInvite: (callback: (data: { callerNumber: string; callerName: string }) => void) => () => void;
   }
 

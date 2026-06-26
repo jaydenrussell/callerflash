@@ -332,6 +332,11 @@ ipcMain.handle('sip:connect', async (_event, config) => {
         }
         resolve({ success: false, message });
       },
+      onLog: (message) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('sip:log', { message });
+        }
+      },
       onInvite: (callerData) => {
         // Incoming call hit the wire! Trigger toast.
         if (mainWindow && !mainWindow.isDestroyed()) {

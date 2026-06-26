@@ -96,6 +96,11 @@ contextBridge.exposeInMainWorld('callerflash', {
       ipcRenderer.on('sip:status', handler);
       return () => ipcRenderer.removeListener('sip:status', handler);
     },
+    onLog: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('sip:log', handler);
+      return () => ipcRenderer.removeListener('sip:log', handler);
+    },
     onInvite: (callback) => {
       const handler = (_event, data) => callback(data);
       ipcRenderer.on('sip:invite', handler);

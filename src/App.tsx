@@ -383,7 +383,7 @@ export default function App() {
   // Listen for Real SIP Backend Status Events
   useEffect(() => {
     if (!window.callerflash?.sip?.onStatus) return;
-    return window.callerflash.sip.onStatus((data) => {
+    const unsubStatus = window.callerflash.sip.onStatus((data) => {
       if (data.status === 'registered') {
         useAppStore.setState({ sipRegistered: true, isConnecting: false });
         addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER 200 OK (Registration active)' });
@@ -393,6 +393,15 @@ export default function App() {
         addDiagnosticLog({ level: 'error', category: 'SIP', message: `SIP Error: ${data.message}` });
       }
     });
+
+    const unsubLog = window.callerflash.sip.onLog?.((data) => {
+      addDiagnosticLog({ level: 'info', category: 'SIP', message: data.message });
+    });
+
+    return () => {
+      unsubStatus();
+      unsubLog?.();
+    };
   }, [addDiagnosticLog]);
 
   // Listen for Real SIP Inbound Calls

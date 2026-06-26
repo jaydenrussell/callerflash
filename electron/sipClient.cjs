@@ -23,19 +23,29 @@ let currentCallId = null;
 
 function createContactUri() {
   const ip = getLocalIp();
-  return `sip:${currentConfig.username}@${ip}:5060`;
+  const transportParam = currentConfig.protocol === 'TCP' ? ';transport=tcp' : '';
+  return `sip:${currentConfig.username}@${ip}:5060${transportParam}`;
+}
+
+function getServerUri() {
+  // VoIP providers often reject strict matches if :5060 is included unnecessarily
+  const portPart = currentConfig.port === 5060 ? '' : `:${currentConfig.port}`;
+  const transportParam = currentConfig.protocol === 'TCP' ? ';transport=tcp' : '';
+  return `sip:${currentConfig.server}${portPart}${transportParam}`;
 }
 
 function sendRegister(callbacks) {
   if (!client) return;
 
-  const uri = `sip:${currentConfig.server}:${currentConfig.port}`;
+  const uri = getServerUri();
+  const toUri = `sip:${currentConfig.username}@${currentConfig.server}`;
+  
   const rq = {
     method: 'REGISTER',
     uri: uri,
     headers: {
-      to: { uri: `sip:${currentConfig.username}@${currentConfig.server}` },
-      from: { uri: `sip:${currentConfig.username}@${currentConfig.server}`, params: { tag: uuidv4().substring(0, 8) } },
+      to: { uri: toUri },
+      from: { uri: toUri, params: { tag: currentCallId.substring(0, 8) } },
       'call-id': currentCallId,
       cseq: { method: 'REGISTER', seq: cseq++ },
       contact: [{ uri: createContactUri() }],
@@ -91,11 +101,24 @@ function connect(config, callbacks) {
 
   try {
     const isTcp = config.protocol === 'TCP' || config.protocol === 'TLS';
+    
     // Start SIP listener
     client = sip.create({
       port: 5060,
       tcp: isTcp,
-      udp: !isTcp
+      udp: !isTcp,
+      logger: {
+        send: (message, address) => {
+          if (message.method !== 'REGISTER') return; // To avoid spamming UI too much, but let's log everything for now
+          const msgType = message.method ? message.method : message.status;
+          callbacks.onLog(`[SIP Out] ${msgType} -> ${address.address}:${address.port}`);
+        },
+        recv: (message, address) => {
+          const msgType = message.method ? message.method : `${message.status} ${message.reason || ''}`;
+          callbacks.onLog(`[SIP In]  ${msgType} <- ${address.address}:${address.port}`);
+        },
+        error: (e) => callbacks.onError(`Internal SIP error: ${e.message}`)
+      }
     }, (rq) => {
       // Handle incoming requests (INVITE)
       if (rq.method === 'INVITE') {
@@ -142,13 +165,14 @@ function disconnect() {
   if (client && currentConfig) {
     // Send un-register (expires: 0)
     try {
-      const uri = `sip:${currentConfig.server}:${currentConfig.port}`;
+      const uri = getServerUri();
+      const toUri = `sip:${currentConfig.username}@${currentConfig.server}`;
       const rq = {
         method: 'REGISTER',
         uri: uri,
         headers: {
-          to: { uri: `sip:${currentConfig.username}@${currentConfig.server}` },
-          from: { uri: `sip:${currentConfig.username}@${currentConfig.server}`, params: { tag: uuidv4().substring(0, 8) } },
+          to: { uri: toUri },
+          from: { uri: toUri, params: { tag: currentCallId.substring(0, 8) } },
           'call-id': currentCallId,
           cseq: { method: 'REGISTER', seq: cseq++ },
           contact: [{ uri: createContactUri() }],
