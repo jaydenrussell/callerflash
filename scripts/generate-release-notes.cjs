@@ -61,13 +61,13 @@ function git(cmd) {
 
 /** Find the last tag of the given channel, or any tag as a fallback. */
 function getLastTag(ch) {
-  const tags = git("git tag --list 'v*' --sort=-version:refname")
+  const tags = git("git tag --list --sort=-version:refname")
     .split('\n').filter(Boolean);
   if (tags.length === 0) return null;
-  if (ch === 'nightly') return tags.find((t) => t.includes('-nightly.')) || tags[0];
+  if (ch === 'nightly') return tags.find((t) => t.includes('nightly-')) || tags[0];
   if (ch === 'beta')     return tags.find((t) => t.includes('-beta.')) || tags[0];
   // stable
-  return tags.find((t) => !t.includes('-nightly.') && !t.includes('-beta.')) || tags[0];
+  return tags.find((t) => !t.includes('nightly-') && !t.includes('-beta.')) || tags[0];
 }
 
 function getCommitsSince(ref, max = 25) {

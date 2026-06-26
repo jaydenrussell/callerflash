@@ -40,7 +40,7 @@ function readPackageVersion() {
 
 function gitTags() {
   try {
-    const out = execSync("git tag --list 'v*' --sort=-version:refname", {
+    const out = execSync("git tag --list --sort=-version:refname", {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'ignore'],
     });
