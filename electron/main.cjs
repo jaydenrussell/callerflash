@@ -717,13 +717,13 @@ ipcMain.on('updater:install', async (_event, downloadUrl) => {
         }
     </script>
     <style>
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #1a1a2e; color: #fff; padding: 25px; overflow: hidden; margin: 0; box-sizing: border-box; display: flex; align-items: center; gap: 15px; border: 1px solid #333; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #202020; color: #ffffff; padding: 25px; overflow: hidden; margin: 0; box-sizing: border-box; display: flex; align-items: center; gap: 15px; border: 1px solid #3d3d3d; }
         .icon { width: 50px; height: 50px; flex-shrink: 0; background: rgba(96, 205, 255, 0.15); border-radius: 12px; padding: 10px; box-sizing: border-box; }
         .icon img { width: 100%; height: 100%; object-fit: contain; }
         .content { flex: 1; min-width: 0; }
         .title { font-weight: 600; font-size: 16px; color: #60cdff; margin-bottom: 4px; }
         .desc { font-size: 12px; color: #a0a0a0; margin-bottom: 12px; }
-        .loader { width: 100%; height: 4px; background: #000; position: relative; overflow: hidden; border-radius: 2px; }
+        .loader { width: 100%; height: 4px; background: #1a1a1a; position: relative; overflow: hidden; border-radius: 2px; border: 1px solid #3d3d3d; }
         .bar { position: absolute; left: -50%; width: 50%; height: 100%; background: #60cdff; animation: slide 1.5s infinite ease-in-out; }
         @keyframes slide { 0% { left: -50%; } 100% { left: 100%; } }
     </style>
