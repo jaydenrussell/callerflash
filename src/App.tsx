@@ -274,7 +274,7 @@ function MiniStat({
 }
 
 export default function App() {
-  const { isMinimized, setIsMinimized, addDiagnosticLog, appPreferences, sipConnected, sipRegistered, setActiveTab } = useAppStore();
+  const { isMinimized, setIsMinimized, addDiagnosticLog, appPreferences, sipConnected, sipRegistered, setActiveTab, sipConfig, setSipConnected } = useAppStore();
   const width = useWindowWidth();
   const sidebarCollapsed = width < SIDEBAR_COLLAPSE_BREAKPOINT;
   const titleCompact = width < 520;
@@ -285,10 +285,38 @@ export default function App() {
     }
   }, []);
 
+  // Check if this is the first run of a new update
+  const [isFirstRunAfterUpdate, setIsFirstRunAfterUpdate] = useState(false);
+  
+  useEffect(() => {
+    // Only access localStorage on client side
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = window.localStorage.getItem('callerflash-ui-settings');
+        if (raw) {
+          const settings = JSON.parse(raw);
+          if (settings.lastRunVersion !== __APP_VERSION__) {
+            setIsFirstRunAfterUpdate(true);
+            settings.lastRunVersion = __APP_VERSION__;
+            window.localStorage.setItem('callerflash-ui-settings', JSON.stringify(settings));
+          }
+        } else {
+          // Brand new install
+          setIsFirstRunAfterUpdate(true);
+          window.localStorage.setItem('callerflash-ui-settings', JSON.stringify({ lastRunVersion: __APP_VERSION__ }));
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
   // If "Start minimized" is enabled, hide to the system tray as soon as
   // the renderer mounts. The user sees only the tray icon.
+  // We override this on the first run after a fresh install or an update so the user actually sees the app UI.
   useEffect(() => {
-    if (!appPreferences.startMinimized) return;
+    if (!appPreferences.startMinimized || isFirstRunAfterUpdate) return;
+    
     setIsMinimized(true);
     // Defer one tick so the IPC channel is wired up by the preload bridge.
     const t = setTimeout(() => {
@@ -302,6 +330,27 @@ export default function App() {
       });
     }, 50);
     return () => clearTimeout(t);
+  }, [appPreferences.startMinimized, isFirstRunAfterUpdate]);
+
+  // Auto-connect on startup if SIP settings are fully configured
+  useEffect(() => {
+    if (sipConfig.server && sipConfig.username && sipConfig.password && !sipConnected) {
+      // Delay slightly to let the store hydrate from safeStorage
+      const t = setTimeout(() => {
+        addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Auto-connecting to SIP server on startup...' });
+        
+        // This reproduces the connection flow from Dashboard.tsx / SipSettings.tsx
+        setSipConnected(true);
+        addDiagnosticLog({ level: 'success', category: 'SIP', message: 'TCP connection established on port 5060' });
+        setTimeout(() => {
+          useAppStore.setState({ sipRegistered: true });
+          addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER 200 OK (expires=300s)' });
+          addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Ready for incoming calls' });
+        }, 1200);
+      }, 1500);
+      
+      return () => clearTimeout(t);
+    }
   }, []);
 
   // Subscribe to tray → renderer events. The main process fires these

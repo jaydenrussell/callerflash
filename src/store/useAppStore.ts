@@ -85,6 +85,9 @@ interface PersistedUiSettings {
   autoDownload?: boolean;
   toastConfig?: Partial<ToastConfig>;
   releasePageUrl?: string;
+  sipConfig?: Partial<SipConfig>;
+  sipPasswordEncrypted?: string;
+  lastRunVersion?: string;
 }
 
 function loadPersistedUiSettings(): PersistedUiSettings {
@@ -161,6 +164,7 @@ const defaultSipConfig: SipConfig = {
   codec: 'G.711u',
   stunServer: 'stun.l.google.com',
   registerExpiry: 300,
+  ...(persistedUi.sipConfig || {}),
 };
 
 const defaultAppPreferences: AppPreferences = {
@@ -220,7 +224,28 @@ export const useAppStore = create<AppState>((set) => ({
   sipConnected: false,
   sipRegistered: false,
   sipConfig: defaultSipConfig,
-  setSipConfig: (config) => set((s) => ({ sipConfig: { ...s.sipConfig, ...config } })),
+  setSipConfig: (config) => set((s) => {
+    const next = { ...s.sipConfig, ...config };
+    
+    // Asynchronously encrypt the password and save to localStorage
+    if (window.callerflash?.safeStorage?.encrypt) {
+      window.callerflash.safeStorage.encrypt(next.password || '').then((encrypted) => {
+        savePersistedUiSettings({
+          ...loadPersistedUiSettings(),
+          sipConfig: { ...next, password: '' },
+          sipPasswordEncrypted: encrypted || '',
+        });
+      });
+    } else {
+      // In web dev mode, just save the password as plain text
+      savePersistedUiSettings({
+        ...loadPersistedUiSettings(),
+        sipConfig: next,
+      });
+    }
+
+    return { sipConfig: next };
+  }),
   setSipConnected: (connected) => set({ sipConnected: connected }),
   setSipRegistered: (registered) => set({ sipRegistered: registered }),
 
@@ -311,3 +336,17 @@ export const useAppStore = create<AppState>((set) => ({
   clipboardText: '',
   setClipboardText: (text) => set({ clipboardText: text }),
 }));
+
+// Asynchronously decrypt the SIP password on app boot
+if (typeof window !== 'undefined' && window.callerflash?.safeStorage?.decrypt && persistedUi.sipPasswordEncrypted) {
+  window.callerflash.safeStorage.decrypt(persistedUi.sipPasswordEncrypted).then((decrypted) => {
+    if (decrypted) {
+      useAppStore.setState((s) => ({
+        sipConfig: {
+          ...s.sipConfig,
+          password: decrypted,
+        }
+      }));
+    }
+  });
+}
