@@ -252,7 +252,7 @@ export async function parseGithubRelease(release: {
   assets: Array<{ name: string; browser_download_url: string }>;
 }): Promise<UpdateArtifact | null> {
   const versionMatch = release.tag_name.match(/v?(\d+\.\d+\.\d+(?:-[\w.]+)?)/)
-    || release.tag_name.match(/v?(nightly-\d{8})/i);
+    || release.tag_name.match(/v?(nightly-\d{8}(?:-\d+)?)/i);
   if (!versionMatch) return null;
   const version = versionMatch[1];
 

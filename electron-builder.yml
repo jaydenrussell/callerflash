@@ -10,9 +10,19 @@ directories:
 files:
   - dist/**/*
   - electron/**/*
+  - "!**/*.map"
+  - "!**/*.tsbuildinfo"
+  - "!**/.DS_Store"
   - "!node_modules/**/*"
 
 artifactName: "CallerFlash-${version}.${ext}"
+
+# Pack app code into asar for faster cold start + smaller installer.
+# Compression: maximum saves ~15% on installer size with negligible
+# startup overhead on modern CPUs.
+asar: true
+asarUnpack:
+  - buildResources/**
 
 win:
   target:

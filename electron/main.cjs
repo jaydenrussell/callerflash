@@ -174,11 +174,7 @@ function loadTrayIcon() {
     path.join(resPath, 'cflogo.png'),
     path.join(__dirname, '../buildResources/cflogo.ico'),
     path.join(__dirname, '../buildResources/cflogo.png'),
-    path.join(__dirname, '../buildResources/tray-icon.ico'),
     path.join(__dirname, '../buildResources/tray-icon.png'),
-    path.join(__dirname, '../buildResources/Untitled.png'),
-    path.join(__dirname, '../buildResources/icon.ico'),
-    path.join(__dirname, '../buildResources/icon.png'),
   ];
   for (const iconPath of candidates) {
     try {
