@@ -254,7 +254,57 @@ export function AutoUpdate() {
         addDiagnosticLog({ level: 'error', category: 'UPDATE', message: `Install failed: ${status.message}` });
       }
     });
-  }, [setUpdateInfo, addDiagnosticLog]);
+  }, [addDiagnosticLog]);
+
+  // Background update check — fired by the main process on every app
+  // launch (respecting the user's frequency preference). Runs silently
+  // without changing the current phase or switching tabs. Only updates
+  // the tray indicator if an update is found.
+  useEffect(() => {
+    if (!window.callerflash?.updater?.onBackgroundCheck) return;
+    return window.callerflash.updater.onBackgroundCheck(async ({ repo, channel }) => {
+      try {
+        const apiUrl = `https://api.github.com/repos/${repo}/releases?per_page=20`;
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 10_000);
+        const resp = await fetch(apiUrl, {
+          headers: { Accept: 'application/vnd.github+json' },
+          signal: controller.signal,
+        });
+        clearTimeout(tid);
+        if (!resp.ok) return;
+        const releases = await resp.json();
+        // Pick the latest release matching the channel.
+        const candidate = (releases as GithubRelease[]).find((r) => {
+          if (channel === 'stable') return !r.prerelease;
+          if (channel === 'beta') return r.prerelease && /beta/i.test(r.tag_name);
+          return true; // nightly — take the latest
+        }) || releases[0];
+        if (!candidate) return;
+        const tagVer = formatVersion(candidate.tag_name);
+        const curVer = formatVersion(updateInfo.currentVersion);
+        // Simple "is it different?" check — the full verification runs
+        // only when the user opens the Updates tab.
+        if (tagVer && tagVer !== curVer) {
+          setUpdateInfo({
+            latestVersion: tagVer,
+            updateAvailable: true,
+            releasePageUrl: candidate.html_url,
+            lastChecked: new Date(),
+          });
+          addDiagnosticLog({
+            level: 'info',
+            category: 'UPDATE',
+            message: `Background check: update available (${tagVer})`,
+          });
+        } else {
+          setUpdateInfo({ lastChecked: new Date() });
+        }
+      } catch {
+        // Silent — background check must never disrupt the user.
+      }
+    });
+  }, [updateInfo.currentVersion, addDiagnosticLog]);
 
   // Auto-check on tab mount — ALWAYS run on first load regardless of
   // last-checked time, so the user sees updates immediately when they

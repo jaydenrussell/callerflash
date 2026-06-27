@@ -51,6 +51,10 @@ export function Preferences() {
             onToggle={() => {
               const next = !appPreferences.startWithWindows;
               setAppPreferences({ startWithWindows: next });
+              // Tell the main process to register/unregister the login item.
+              if (window.callerflash?.app?.setStartWithWindows) {
+                window.callerflash.app.setStartWithWindows(next);
+              }
               addDiagnosticLog({
                 level: 'info',
                 category: 'SYSTEM',
@@ -66,6 +70,10 @@ export function Preferences() {
             onToggle={() => {
               const next = !appPreferences.startMinimized;
               setAppPreferences({ startMinimized: next });
+              // Tell the main process so login-item args stay in sync.
+              if (window.callerflash?.app?.setStartMinimized) {
+                window.callerflash.app.setStartMinimized(next);
+              }
               addDiagnosticLog({
                 level: 'info',
                 category: 'SYSTEM',

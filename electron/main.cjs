@@ -21,6 +21,7 @@ const { downloadAndVerifyUpdateArtifact } = require('./updateVerifier.cjs');
 // If a second copy is launched (double-click on the .exe again, etc.),
 // focus the existing window instead of starting a duplicate.
 const isUpdaterHelper = process.argv.includes('--updater-helper');
+const isStartMinimized = process.argv.includes('--start-minimized');
 const gotSingleInstanceLock = isUpdaterHelper ? true : app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -650,6 +651,40 @@ ipcMain.on('updater:install', async (_event, artifact) => {
 
 ipcMain.on('updater:set-channel', () => { /* handled by separate feature */ });
 
+// ── IPC: "Start with Windows" ────────────────────────────────────────
+// Wire the renderer's toggle to Electron's login-item API so the OS
+// actually launches CallerFlash at sign-in. Uses the user's choice of
+// start-minimized so the app can boot straight to the tray.
+ipcMain.on('app:set-start-with-windows', (_event, enabled) => {
+  if (process.platform !== 'win32') return;
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      args: enabled && appPreferencesStartMinimized ? ['--start-minimized'] : [],
+    });
+  } catch (err) {
+    console.error('[app] setLoginItemSettings failed:', err.message);
+  }
+});
+
+// Track the current start-minimized preference so the login-item args
+// stay in sync when the user toggles "Start minimized" independently.
+let appPreferencesStartMinimized = false;
+
+ipcMain.on('app:set-start-minimized', (_event, enabled) => {
+  appPreferencesStartMinimized = !!enabled;
+  // If "Start with Windows" is already enabled, update the login-item
+  // args so the next boot honors the new minimized setting.
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: app.getLoginItemSettings().openAtLogin,
+      args: app.getLoginItemSettings().openAtLogin && enabled ? ['--start-minimized'] : [],
+    });
+  } catch (err) {
+    console.error('[app] setLoginItemSettings failed:', err.message);
+  }
+});
+
 // ── IPC: tray status sync ──────────────────────────────────────────────
 // Renderer pushes the current SIP status string so the tray tooltip
 // and "SIP: …" menu label reflect reality.
@@ -678,6 +713,56 @@ if (!isUpdaterHelper) {
   app.on('second-instance', () => showWindow());
 }
 
+// ── Startup update check ─────────────────────────────────────────────
+// Runs an automatic update check on every app launch, respecting the
+// user's frequency preference (daily/weekly/monthly/off). The renderer
+// persists the last-checked timestamp + frequency to localStorage;
+// we read it here and decide whether to fire a check now.
+const UI_STORAGE_KEY = 'callerflash-ui-settings';
+
+function readPersistedSettings() {
+  try {
+    const p = path.join(app.getPath('userData'), 'callerflash-ui-settings.json');
+    // Primary location: userData (survives in-app updates).
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch { /* ignore */ }
+  // Fallback: localStorage is mirrored to a file by the renderer, but
+  // if we can't read it we just let the renderer handle the check.
+  return {};
+}
+
+function shouldAutoCheck(lastCheckedAt, frequency) {
+  if (!frequency || frequency === 'off') return false;
+  const intervalDays = { daily: 1, weekly: 7, monthly: 30 }[frequency] ?? 1;
+  if (!lastCheckedAt) return true;
+  const ageDays = (Date.now() - new Date(lastCheckedAt).getTime()) / 86_400_000;
+  return ageDays >= intervalDays;
+}
+
+function scheduleStartupUpdateCheck() {
+  // Defer until the renderer has mounted and the IPC bridge is live.
+  setTimeout(() => {
+    try {
+      const settings = readPersistedSettings();
+      const lastChecked = settings.lastCheckedAt ? new Date(settings.lastCheckedAt) : null;
+      const frequency = settings.updateCheckFrequency || 'daily';
+      if (!shouldAutoCheck(lastChecked, frequency)) return;
+
+      const repo = settings.githubRepo
+        ? settings.githubRepo.replace(/^https?:\/\/github\.com\//, '')
+        : 'jaydenrussell/CallerFlash';
+      const channel = settings.updateChannel || 'stable';
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        // Tell the renderer to run a background check (no tab switch).
+        mainWindow.webContents.send('updater:background-check', { repo, channel });
+      }
+    } catch (err) {
+      console.error('[updater] startup check failed:', err.message);
+    }
+  }, 3000); // 3s delay lets the renderer fully hydrate SIP + store
+}
+
 // ── App lifecycle ──────────────────────────────────────────────────────
 app.whenReady().then(() => {
   if (isUpdaterHelper) {
@@ -687,6 +772,25 @@ app.whenReady().then(() => {
 
   createWindow();
   createTray();
+
+  // Schedule an automatic update check on every app launch (respecting
+  // the user's frequency preference stored in localStorage). This runs
+  // regardless of which tab the renderer lands on — the user doesn't
+  // need to open the Updates tab to stay current.
+  scheduleStartupUpdateCheck();
+
+  // If launched with --start-minimized (from the Windows login item),
+  // hide the window immediately so the user sees only the tray icon.
+  if (isStartMinimized) {
+    appPreferencesStartMinimized = true;
+    // Defer one tick so the renderer can mount before we hide.
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.hide();
+        notifyRenderer('window:hidden-to-tray');
+      }
+    }, 200);
+  }
 
   app.on('activate', () => {
     // macOS: re-create the window when the dock icon is clicked.

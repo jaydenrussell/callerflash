@@ -114,8 +114,9 @@ function TitleBar({ compact }: { compact: boolean }) {
           <Minus className="w-3.5 h-3.5 text-win-text-secondary" />
         </button>
         <button
+          onClick={() => window.callerflash?.window?.maximize?.()}
           className="px-3 sm:px-4 h-full hover:bg-win-surface-hover transition-colors flex items-center"
-          title="Window mode"
+          title="Maximize / Restore"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <Square className="w-3 h-3 text-win-text-secondary" />

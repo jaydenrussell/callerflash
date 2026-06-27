@@ -85,6 +85,11 @@ contextBridge.exposeInMainWorld('callerflash', {
       ipcRenderer.on('updater:status', handler);
       return () => ipcRenderer.removeListener('updater:status', handler);
     },
+    onBackgroundCheck: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('updater:background-check', handler);
+      return () => ipcRenderer.removeListener('updater:background-check', handler);
+    },
   },
 
   // ── SIP Engine ──────────────────────────────────────────────────
@@ -113,5 +118,11 @@ contextBridge.exposeInMainWorld('callerflash', {
     isElectron: true,
     arch: process.arch,
     version: process.env.npm_package_version || '0.0.0',
+  },
+
+  // ── App lifecycle controls ──────────────────────────────────────
+  app: {
+    setStartWithWindows: (enabled) => ipcRenderer.send('app:set-start-with-windows', enabled),
+    setStartMinimized: (enabled) => ipcRenderer.send('app:set-start-minimized', enabled),
   },
 });
