@@ -41,6 +41,8 @@ function unq(a) {
   return a;
 }
 
+const SIP_USER_AGENT = 'CallerFlash';
+
 function sendRegister(callbacks) {
   if (!client) return;
 
@@ -57,7 +59,8 @@ function sendRegister(callbacks) {
       cseq: { method: 'REGISTER', seq: cseq++ },
       contact: [{ uri: createContactUri() }],
       expires: currentConfig.registerExpiry || 300,
-      'user-agent': 'CallerFlash',
+      'user-agent': SIP_USER_AGENT,
+      'max-forwards': 70,
     }
   };
 
@@ -74,6 +77,8 @@ function sendRegister(callbacks) {
           cseq: { method: 'REGISTER', seq: cseq++ },
           contact: rq.headers.contact,
           expires: rq.headers.expires,
+          'user-agent': SIP_USER_AGENT,
+          'max-forwards': 70,
         }
       };
 
@@ -143,7 +148,7 @@ function connect(config, callbacks) {
         // 486 Busy Here is appropriate for a monitor that doesn't accept the call.
         const rs = sip.makeResponse(rq, 486, 'Busy Here');
         if (!rs.headers) rs.headers = {};
-        rs.headers['user-agent'] = 'CallerFlash';
+        rs.headers['user-agent'] = SIP_USER_AGENT;
         client.send(rs);
       }
     });
@@ -186,7 +191,7 @@ function disconnect() {
           cseq: { method: 'REGISTER', seq: cseq++ },
           contact: [{ uri: createContactUri() }],
           expires: 0, // 0 = unregister
-          'user-agent': 'CallerFlash',
+          'user-agent': SIP_USER_AGENT,
         }
       };
       

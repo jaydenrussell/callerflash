@@ -167,6 +167,7 @@ export function SipSettings() {
   };
 
   const handleSave = () => {
+    const configChanged = JSON.stringify(localConfig) !== JSON.stringify(sipConfig);
     setSipConfig(localConfig);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -177,8 +178,20 @@ export function SipSettings() {
       details: `Server: ${localConfig.server}:${localConfig.port}, Protocol: ${localConfig.protocol}`,
     });
     
-    // Auto-connect on save if not connected
-    if (!sipConnected && localConfig.server && localConfig.username && localConfig.password) {
+    // If connected and config changed, reconnect with new settings
+    if (sipConnected && configChanged) {
+      addDiagnosticLog({
+        level: 'info',
+        category: 'SIP',
+        message: 'Settings changed — reconnecting with new configuration…',
+      });
+      disconnectSip();
+      // Delay slightly to let the socket close before reconnecting
+      setTimeout(() => {
+        connectSip();
+      }, 500);
+    } else if (!sipConnected && localConfig.server && localConfig.username && localConfig.password) {
+      // Auto-connect on save if not connected
       connectSip();
     }
   };
