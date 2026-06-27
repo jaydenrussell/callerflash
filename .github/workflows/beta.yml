@@ -1,12 +1,9 @@
 name: Release — Beta
 
 # Triggered by manual dispatch ONLY.
-# To promote from nightly → beta:
-#   1. Merge main into the beta branch
-#   2. Manually dispatch this workflow
+# Automatically merges the latest nightly branch before building.
 #
-# Build context: the `beta` branch HEAD.
-# Promote to stable by manually dispatching the stable workflow.
+# Build context: the merged result (nightly → beta).
 
 on:
   workflow_dispatch:
@@ -15,8 +12,29 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    uses: ./.github/workflows/release.yml
-    with:
-      channel: beta
-    secrets: inherit
+  sync-and-release:
+    name: Merge nightly → beta + Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Merge nightly into beta
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin nightly
+          git checkout beta || git checkout -b beta
+          git reset origin/beta --hard
+          git merge origin/nightly --no-ff -m "chore: merge nightly → beta for release" || true
+
+      - name: Push beta
+        run: git push origin beta --force
+
+      - name: Release
+        uses: ./.github/workflows/release.yml
+        with:
+          channel: beta
+        secrets: inherit
