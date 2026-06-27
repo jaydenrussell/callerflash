@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
   Phone, PhoneIncoming, PhoneMissed, PhoneOff,
-  Wifi, Bell, Clipboard, Clock, Activity,
-  Zap, TrendingUp, Shield, EyeOff, Info
+  Wifi, Bell, Clipboard, Clock,
+  Shield, EyeOff, Info
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
@@ -81,81 +81,40 @@ export function Dashboard() {
         />
       </div>
 
-      {/* Two-column: Connection Details + Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 flex-shrink-0">
-        <div className="lg:col-span-2 bg-win-surface rounded-xl border border-win-border p-3">
-          <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
-            <Shield className="w-4 h-4 text-win-accent" />
-            Connection
-          </h3>
-          <div className="grid grid-cols-2 gap-y-1.5 gap-x-4">
-            <DetailRow label="SIP Server" value={sipConfig.server || '—'} />
-            <DetailRow label="Protocol" value={`${sipConfig.protocol} : ${sipConfig.port}`} />
-            <DetailRow label="Codec" value={sipConfig.codec} />
-            <DetailRow label="STUN" value={sipConfig.stunServer || '—'} />
-            <DetailRow label="Registration" value={sipRegistered ? `Active (${sipConfig.registerExpiry}s)` : 'Inactive'} />
-            <DetailRow label="Encryption" value={sipConfig.protocol === 'TLS' ? 'TLS' : 'Optional'} />
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <InfoButton
-              label="Background mode"
-              value={isMinimized ? 'Hidden in tray' : 'Visible'}
-              tooltip="Whether the main window is shown or hidden to the system tray. SIP registration + toasts keep running either way."
-            />
-            <InfoButton
-              label="Startup"
-              value={appPreferences.startWithWindows ? 'With Windows' : 'Manual'}
-              tooltip="Whether CallerFlash registers itself to launch on Windows sign-in."
-            />
-          </div>
+      {/* Connection Details */}
+      <div className="bg-win-surface rounded-xl border border-win-border p-3">
+        <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
+          <Shield className="w-4 h-4 text-win-accent" />
+          Connection
+        </h3>
+        <div className="grid grid-cols-2 gap-y-1.5 gap-x-4">
+          <DetailRow label="SIP Server" value={sipConfig.server || '—'} />
+          <DetailRow label="Protocol" value={`${sipConfig.protocol} : ${sipConfig.port}`} />
+          <DetailRow label="Codec" value={sipConfig.codec} />
+          <DetailRow label="STUN" value={sipConfig.stunServer || '—'} />
+          <DetailRow label="Registration" value={sipRegistered ? `Active (${sipConfig.registerExpiry}s)` : 'Inactive'} />
+          <DetailRow label="Encryption" value={sipConfig.protocol === 'TLS' ? 'TLS' : 'Optional'} />
         </div>
-
-        <div className="bg-win-surface rounded-xl border border-win-border p-3">
-          <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2">
-            <Zap className="w-4 h-4 text-win-warning" />
-            Quick actions
-          </h3>
-          <div className="space-y-1">
-            <QuickAction
-              icon={<Activity className="w-3.5 h-3.5" />}
-              label="SIP diagnostics"
-              onClick={() => {
-                addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Running SIP diagnostics…' });
-                addDiagnosticLog({ level: 'success', category: 'SIP', message: 'DNS resolution: OK (4ms)' });
-                addDiagnosticLog({ level: 'success', category: 'SIP', message: 'Port 5060 reachable: OK' });
-                addDiagnosticLog({ level: 'success', category: 'SYSTEM', message: 'Audio device: Default (OK)' });
-              }}
-            />
-            <QuickAction
-              icon={<Clock className="w-3.5 h-3.5" />}
-              label="Re-register SIP"
-              onClick={() => {
-                addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Sending REGISTER refresh…' });
-                setTimeout(() => addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER refreshed (200 OK)' }), 500);
-              }}
-              disabled={!sipConnected}
-            />
-            <QuickAction
-              icon={<TrendingUp className="w-3.5 h-3.5" />}
-              label="Check for updates"
-              onClick={() => {
-                addDiagnosticLog({ level: 'info', category: 'UPDATE', message: 'Checking GitHub…' });
-              }}
-            />
-            <QuickAction
-              icon={<EyeOff className="w-3.5 h-3.5" />}
-              label="Hide to tray"
-              onClick={hideToTray}
-            />
-          </div>
+        <div className="mt-2 flex items-center gap-2">
+          <InfoButton
+            label="Background mode"
+            value={isMinimized ? 'Hidden in tray' : 'Visible'}
+            tooltip="Whether the main window is shown or hidden to the system tray. SIP registration + toasts keep running either way."
+          />
+          <InfoButton
+            label="Startup"
+            value={appPreferences.startWithWindows ? 'With Windows' : 'Manual'}
+            tooltip="Whether CallerFlash registers itself to launch on Windows sign-in."
+          />
         </div>
       </div>
 
+      {/* Recent Calls */}
       <div className="bg-win-surface rounded-xl border border-win-border p-3 flex-1 min-h-0 flex flex-col">
-        <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2 flex-shrink-0">
-          <Clock className="w-4 h-4 text-win-accent" />
-          Recent calls
-        </h3>
+      <h3 className="text-sm font-semibold text-win-text mb-2 flex items-center gap-2 flex-shrink-0">
+        <Clock className="w-4 h-4 text-win-accent" />
+        Recent calls
+      </h3>
         {callHistory.length === 0 ? (
           <div className="text-center py-6 flex-1 flex flex-col items-center justify-center">
             <PhoneOff className="w-10 h-10 text-win-text-tertiary mx-auto mb-2" />
@@ -248,24 +207,6 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <span className="text-[11px] text-win-text-tertiary">{label}</span>
       <span className="text-[11px] font-medium text-win-text-secondary truncate ml-2">{value}</span>
     </div>
-  );
-}
-
-function QuickAction({ icon, label, onClick, disabled = false }: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-win-text-secondary hover:bg-win-surface-hover hover:text-win-text transition-all disabled:opacity-40 disabled:cursor-not-allowed text-left"
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
   );
 }
 
