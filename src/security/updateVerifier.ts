@@ -314,13 +314,18 @@ function compareSemver(a: string, b: string): number {
   const va = a.replace(/^v/, '');
   const vb = b.replace(/^v/, '');
 
-  const nightlyA = va.match(/^nightly-(\d{8})(?:-(\d+))?$/i);
-  const nightlyB = vb.match(/^nightly-(\d{8})(?:-(\d+))?$/i);
+  // Normalize nightly format to semver-compatible prerelease
+  // nightly.20260627-3 or nightly-20260627-3 => 0.0.0-nightly.20260627-3
+  const nightlyA = va.match(/^nightly.?(\d{8})(?:-(\d+))?$/i);
+  const nightlyB = vb.match(/^nightly.?(\d{8})(?:-(\d+))?$/i);
+
   if (nightlyA && nightlyB) {
+    // Both are nightlies: compare date + sequence
     const diff = Number(nightlyA[1]) - Number(nightlyB[1]);
     if (diff !== 0) return diff;
     return Number(nightlyA[2] || '0') - Number(nightlyB[2] || '0');
   }
+  // Nightly is always "newer" than any stable/beta (prerelease priority)
   if (nightlyA) return 1;
   if (nightlyB) return -1;
 
