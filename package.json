@@ -18,6 +18,7 @@
     "electron:publish": "npm run electron:build && npx electron-builder --win --x64 --publish always"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "sip": "^0.0.6"
   },
   "devDependencies": {
@@ -26,17 +27,17 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",
+    "clsx": "2.1.1",
     "electron": "^42.5.0",
     "electron-builder": "^26.15.3",
-    "tailwindcss": "4.3.1",
-    "typescript": "^6.0.3",
-    "vite": "8.1.0",
-    "vite-plugin-singlefile": "2.3.3",
-    "clsx": "2.1.1",
     "lucide-react": "^1.21.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "tailwind-merge": "3.6.0",
+    "tailwindcss": "4.3.1",
+    "typescript": "^6.0.3",
+    "vite": "8.1.0",
+    "vite-plugin-singlefile": "2.3.3",
     "zustand": "^5.0.14"
   },
   "build": {

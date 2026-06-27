@@ -74,16 +74,20 @@ contextBridge.exposeInMainWorld('callerflash', {
     },
   },
 
-  // ── Auto-updater ────────────────────────────────────────────────
+  // ── Auto-updater (electron-updater) ──────────────────────────────
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),
-    download: () => ipcRenderer.invoke('updater:download'),
-    install: (artifact) => ipcRenderer.send('updater:install', artifact),
+    install: () => ipcRenderer.send('updater:install'),
     setChannel: (channel) => ipcRenderer.send('updater:set-channel', channel),
     onStatus: (callback) => {
       const handler = (_event, data) => callback(data);
       ipcRenderer.on('updater:status', handler);
       return () => ipcRenderer.removeListener('updater:status', handler);
+    },
+    onProgress: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('updater:progress', handler);
+      return () => ipcRenderer.removeListener('updater:progress', handler);
     },
     onBackgroundCheck: (callback) => {
       const handler = (_event, data) => callback(data);

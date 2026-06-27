@@ -14,7 +14,7 @@ const https = require('https');
 const http = require('http');
 const { spawn } = require('child_process');
 const sipClient = require('./sipClient.cjs');
-const { downloadAndVerifyUpdateArtifact } = require('./updateVerifier.cjs');
+const updater = require('./updater.cjs');
 
 // ── Single-instance lock ───────────────────────────────────────────────
 // If a second copy is launched (double-click on the .exe again, etc.),
@@ -574,135 +574,10 @@ ipcMain.handle('safe-storage:decrypt', async (_event, base64Cipher) => {
   }
 });
 
-// ── IPC: updater channels ────────────────────────────────────────────
-ipcMain.handle('updater:check', async () => ({ status: 'noop' }));
-ipcMain.handle('updater:download', async () => ({ status: 'noop' }));
-
-/**
- * One-click update: receive verified release metadata from the renderer,
- * download the installer in the main process, verify the checksum and
- * detached signature, then run the silent installer directly and show
- * progress in the main window. No helper process needed.
- */
-ipcMain.on('updater:install', async (_event, artifact) => {
-  if (!artifact || typeof artifact !== 'object') {
-    console.error('[updater] Refusing malformed install request');
-    return;
-  }
-
-  const tmpDir = app.getPath('temp');
-  const versionTag = String(artifact.version || 'update').replace(/[^a-z0-9._-]/gi, '_');
-  const filePath = path.join(tmpDir, `CallerFlash-${versionTag}.exe`);
-
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('updater:status', {
-      status: 'downloading',
-      message: 'Downloading and verifying update…',
-      progress: 0,
-    });
-  }
-
-  let savedPath;
-  try {
-    savedPath = await downloadAndVerifyUpdateArtifact(artifact, filePath, (progress) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('updater:status', {
-          status: 'downloading',
-          progress,
-          message: 'Downloading and verifying update…',
-        });
-      }
-    });
-  } catch (err) {
-    console.error('[updater] Download/verify failed:', err.message);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('updater:status', { status: 'error', message: err.message });
-    }
-    return;
-  }
-
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('updater:status', {
-      status: 'installing',
-      message: 'Running silent installer…',
-      progress: 50,
-    });
-  }
-
-  // Run the silent installer directly from the main process.
-  // PowerShell waits for NSIS to finish, then relaunches the app.
-  const installDir = path.dirname(process.execPath);
-  const appPath = process.execPath;
-
-  try {
-    await runWindowsInstaller(savedPath, installDir, appPath);
-    // If we get here, the installer spawned and PowerShell detached.
-    // Quit the running app so NSIS can replace the files.
-    setTimeout(() => {
-      isQuitting = true;
-      app.quit();
-    }, 1000);
-  } catch (err) {
-    console.error('[updater] Install failed:', err.message);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('updater:status', { status: 'error', message: err.message });
-    }
-  }
-});
-
-function psQuote(value) {
-  return `'${String(value || '').replace(/'/g, "''")}'`;
-}
-
-function runWindowsInstaller(installerPath, installDir, appPath) {
-  return new Promise((resolve, reject) => {
-    // Two-stage strategy:
-    // 1. Spawn a detached PowerShell that waits for THIS process (the
-    //    Electron app) to exit, THEN runs the silent installer, THEN
-    //    relaunches the app.
-    // 2. The Electron app quits immediately after spawning, so NSIS can
-    //    replace files without contention.
-    const parentPid = process.pid;
-    const psScript = [
-      '$ErrorActionPreference = "SilentlyContinue";',
-      `$installer = ${psQuote(installerPath)};`,
-      `$appPath = ${psQuote(appPath)};`,
-      `$installDir = ${psQuote(installDir || '')};`,
-      `$parentPid = ${parentPid};`,
-      // Wait for the Electron app to exit so files are no longer locked.
-      'try { Get-Process -Id $parentPid -ErrorAction SilentlyContinue | Wait-Process -Timeout 30 } catch {}',
-      // Small delay to ensure file handles are fully released.
-      'Start-Sleep -Seconds 2;',
-      // Run the silent NSIS installer.
-      '$args = @("/S");',
-      'if ($installDir -and $installDir -notmatch "(?i)temp|tmp") { $args += "/D=$installDir" }',
-      '$proc = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru -NoNewWindow;',
-      // On success, relaunch the app.
-      'if ($proc.ExitCode -eq 0) {',
-      '  if ($appPath) { Start-Process -FilePath $appPath | Out-Null }',
-      '}',
-    ].join(' ');
-
-    const encodedCommand = Buffer.from(psScript, 'utf16le').toString('base64');
-    const launcher = spawn('powershell.exe', [
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-EncodedCommand',
-      encodedCommand,
-    ], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-    });
-    launcher.unref();
-    // Resolve immediately — the detached PS will handle the rest after
-    // we exit. We don't wait for it.
-    resolve();
-  });
-}
-
-ipcMain.on('updater:set-channel', () => { /* handled by separate feature */ });
+// ── IPC: updater (electron-updater) ─────────────────────────────────
+// All update logic is delegated to updater.cjs which uses electron-updater
+// for download → verify → install → relaunch lifecycle.
+updater.initUpdaterIPC(mainWindow);
 
 // ── IPC: "Start with Windows" ────────────────────────────────────────
 // Wire the renderer's toggle to Electron's login-item API so the OS

@@ -593,25 +593,12 @@ export function AutoUpdate() {
   };
 
   /**
-   * One-click install: downloads if needed, then runs the installer.
-   *   • Electron → send verified artifact metadata to the main process.
-   *     The main process re-downloads, verifies, spawns the .exe + quits.
-   *   • Web      → download in renderer, save .exe via blob anchor
+   * One-click install: triggers electron-updater to download + install.
+   * The main process handles everything — shows the Discord-style
+   * progress window, downloads, verifies, runs NSIS, relaunches.
    */
   const handleInstall = async () => {
     if (phase === 'installing' || phase === 'downloading') return;
-
-    let finalArtifact = verifiedArtifact;
-    if (!finalArtifact) {
-      const release = channelReleases.find((r) => formatVersion(r.tag_name) === formatVersion(updateInfo.latestVersion));
-      finalArtifact = release ? await parseGithubRelease(release) : null;
-    }
-
-    if (!finalArtifact) {
-      addDiagnosticLog({ level: 'info', category: 'UPDATE', message: 'Verifying installer path before installation...' });
-      await handleCheckAndDownload();
-      return;
-    }
 
     setPhase('installing');
     setUpdateInfo({ isInstalling: true });
@@ -621,34 +608,14 @@ export function AutoUpdate() {
       message: `Installing update ${formatVersion(updateInfo.latestVersion)}…`,
     });
 
-    // Electron: pass the full verified artifact to main process.
+    // Electron: tell main process to start download + install.
     if (window.callerflash?.updater?.install) {
-      window.callerflash.updater.install(finalArtifact);
+      window.callerflash.updater.install();
       return;
     }
 
-    // Web: ensure we have the file downloaded, then save it.
-    if (!downloadedBlobUrl && finalArtifact.downloadUrl) {
-      addDiagnosticLog({ level: 'info', category: 'UPDATE', message: 'Downloading before install…' });
-      const ok = await runDownload({ version: finalArtifact.version, downloadUrl: finalArtifact.downloadUrl });
-      if (!ok) {
-        setPhase('idle');
-        setUpdateInfo({ isInstalling: false });
-        return;
-      }
-    }
-
-    if (downloadedBlobUrl) {
-      const a = document.createElement('a');
-      a.href = downloadedBlobUrl;
-      a.download = `CallerFlash-${finalArtifact.version}.exe`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } else if (finalArtifact.downloadUrl) {
-      window.open(finalArtifact.downloadUrl, '_blank');
-    }
-
+    // Web fallback: not supported (electron-updater is desktop-only).
+    addDiagnosticLog({ level: 'warning', category: 'UPDATE', message: 'In-app updates require the desktop app.' });
     setPhase('idle');
     setUpdateInfo({ isInstalling: false });
   };
