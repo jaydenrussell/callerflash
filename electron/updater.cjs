@@ -399,9 +399,10 @@ function checkForUpdates() {
 }
 
 function downloadAndInstall(mainWindow) {
-  // Don't create a new window if one exists
-  if (!updaterWindow || !updaterWindow.isDestroyed()) {
-    if (updaterWindow) updaterWindow.show();
+  // If window already exists and is alive, just show it
+  if (updaterWindow && !updaterWindow.isDestroyed()) {
+    updaterWindow.show();
+    updaterWindow.focus();
   } else {
     createUpdaterWindow(mainWindow);
   }
@@ -440,20 +441,20 @@ function downloadAndInstall(mainWindow) {
     }, 5000);
   });
 
-  // Safety timeout: if no progress after 15s, show error
+  // Safety timeout: if no progress after 10s, show error
   const safetyTimeout = setTimeout(() => {
     if (!started) {
       autoUpdater.removeListener('download-progress', progressHandler);
-      sendUpdaterStatus({ status: 'error', message: 'Download did not start — check your internet connection or try again later.' });
+      sendUpdaterStatus({ status: 'error', message: 'No download started. The release may be missing update files (latest.yml), or GitHub is unreachable.' });
       updaterCanClose = true;
       setTimeout(() => {
         if (updaterWindow && !updaterWindow.isDestroyed()) {
           updaterWindow.close();
           updaterWindow = null;
         }
-      }, 5000);
+      }, 8000);
     }
-  }, 15000);
+  }, 10000);
 
   // Clear safety timeout once download starts
   autoUpdater.once('download-progress', () => clearTimeout(safetyTimeout));

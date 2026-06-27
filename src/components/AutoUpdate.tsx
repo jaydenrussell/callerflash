@@ -600,24 +600,23 @@ export function AutoUpdate() {
   const handleInstall = async () => {
     if (phase === 'installing' || phase === 'downloading') return;
 
-    setPhase('installing');
-    setUpdateInfo({ isInstalling: true });
     addDiagnosticLog({
       level: 'info',
       category: 'UPDATE',
-      message: `Installing update ${formatVersion(updateInfo.latestVersion)}…`,
+      message: `Starting update ${formatVersion(updateInfo.latestVersion)}…`,
     });
 
     // Electron: tell main process to start download + install.
+    // The main process will show the progress window.
     if (window.callerflash?.updater?.install) {
       window.callerflash.updater.install();
+      setPhase('downloading');
+      setUpdateInfo({ isDownloading: true });
       return;
     }
 
     // Web fallback: not supported (electron-updater is desktop-only).
     addDiagnosticLog({ level: 'warning', category: 'UPDATE', message: 'In-app updates require the desktop app.' });
-    setPhase('idle');
-    setUpdateInfo({ isInstalling: false });
   };
 
   const openUrl = (url: string) => {
