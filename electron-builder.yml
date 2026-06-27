@@ -68,7 +68,7 @@ nsis:
 publish:
   provider: github
   owner: jaydenrussell
-  repo: callerflash
+  repo: CallerFlash
 
 extraResources:
   - from: build/cflogo.ico
