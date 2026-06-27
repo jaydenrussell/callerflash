@@ -1,19 +1,15 @@
 const { app, BrowserWindow, nativeImage, ipcMain } = require('electron');
 const path = require('path');
-const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
 // ── Updater state ──────────────────────────────────────────────────────
 let updaterWindow = null;
-let mainWindowRef = null;
 let updaterCanClose = false;
-let isQuittingForUpdate = false;
 
 // Configure electron-updater
-autoUpdater.autoDownload = false;       // We control when download starts
-autoUpdater.autoInstallOnAppQuit = false; // We control when install happens
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;  // Install when app quits
 autoUpdater.allowDowngrade = false;
-autoUpdater.channel = 'stable';          // Updated based on user preference
 
 // ── Icon helper ────────────────────────────────────────────────────────
 function loadAppIcon() {
@@ -38,7 +34,7 @@ function loadAppIconDataURL() {
   return icon.isEmpty() ? '' : icon.toDataURL();
 }
 
-// ── Updater window HTML (Discord-style portrait) ──────────────────────
+// ── Updater window HTML ───────────────────────────────────────────────
 function buildUpdaterHtml(iconDataUrl) {
   const safeIcon = iconDataUrl || '';
   return `<!DOCTYPE html>
@@ -53,7 +49,7 @@ function buildUpdaterHtml(iconDataUrl) {
       --surface: #181818;
       --border: rgba(255,255,255,0.06);
       --text: #f0f0f0;
-      --text-secondary: rgba(255,255,255,0.5);
+      --text-dim: rgba(255,255,255,0.45);
       --accent: #60cdff;
       --success: #6ccb5f;
       --error: #ff6b6b;
@@ -65,16 +61,14 @@ function buildUpdaterHtml(iconDataUrl) {
       font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
       color: var(--text);
       overflow: hidden;
-      -webkit-app-region: drag;
     }
     .frame {
-      width: 320px;
-      height: 520px;
+      width: 340px; height: 480px;
       background: var(--surface);
-      border-radius: 44px;
+      border-radius: 48px;
       border: 1px solid var(--border);
-      box-shadow: 0 30px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03);
-      padding: 36px 28px 28px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+      padding: 40px 32px 32px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -83,152 +77,211 @@ function buildUpdaterHtml(iconDataUrl) {
       transform: translate(-50%, -50%);
     }
     .logo {
-      width: 72px; height: 72px;
-      border-radius: 20px;
-      padding: 14px;
+      width: 64px; height: 64px;
+      border-radius: 18px;
+      padding: 12px;
       background: rgba(96,205,255,0.10);
       border: 1px solid rgba(96,205,255,0.18);
       display: grid;
       place-items: center;
-      margin-bottom: 28px;
-      flex-shrink: 0;
+      margin-bottom: 24px;
     }
     .logo img { width: 100%; height: 100%; object-fit: contain; }
-    .title {
-      font-size: 16px;
+
+    /* ── Circular progress ──────────────────────────────────────── */
+    .progress-ring {
+      position: relative;
+      width: 120px; height: 120px;
+      margin-bottom: 24px;
+    }
+    .progress-ring svg {
+      width: 100%; height: 100%;
+      transform: rotate(-90deg);
+    }
+    .progress-ring .track {
+      fill: none;
+      stroke: rgba(255,255,255,0.06);
+      stroke-width: 6;
+    }
+    .progress-ring .fill {
+      fill: none;
+      stroke: url(#progressGradient);
+      stroke-width: 6;
+      stroke-linecap: round;
+      stroke-dasharray: 339.292;  /* 2πr where r=54 */
+      stroke-dashoffset: 339.292;
+      transition: stroke-dashoffset 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .progress-ring .fill.indeterminate {
+      animation: spin 1.4s linear infinite;
+      stroke-dashoffset: 85;  /* ~25% arc */
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .progress-ring .center-text {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+    }
+    .progress-ring .percent {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .progress-ring .label {
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+    }
+
+    /* ── Status ─────────────────────────────────────────────────── */
+    .status {
+      font-size: 14px;
       font-weight: 600;
-      margin-bottom: 4px;
+      color: var(--text);
       text-align: center;
+      margin-bottom: 6px;
+      min-height: 20px;
     }
-    .subtitle {
+    .detail {
       font-size: 12px;
-      color: var(--text-secondary);
-      margin-bottom: 28px;
-      text-align: center;
-    }
-    .progress-area {
-      width: 100%;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-    }
-    .progress-track {
-      width: 100%;
-      height: 6px;
-      background: rgba(255,255,255,0.06);
-      border-radius: 999px;
-      overflow: hidden;
-      margin-bottom: 12px;
-    }
-    .progress-fill {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, var(--accent), var(--success));
-      border-radius: 999px;
-      transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .progress-info {
-      display: flex;
-      justify-content: space-between;
-      width: 100%;
-      font-size: 11px;
-      color: var(--text-secondary);
-    }
-    .status-text {
-      margin-top: 20px;
-      font-size: 12px;
-      color: var(--text-secondary);
+      color: var(--text-dim);
       text-align: center;
       min-height: 16px;
     }
-    .status-text.success { color: var(--success); }
-    .status-text.error { color: var(--error); }
+    .size-info {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    /* ── Version badge ──────────────────────────────────────────── */
     .version-badge {
       margin-top: auto;
-      padding: 6px 14px;
+      padding: 6px 16px;
       border-radius: 999px;
       background: rgba(255,255,255,0.04);
       border: 1px solid var(--border);
       font-size: 11px;
-      color: var(--text-secondary);
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
     }
-    .pulse {
-      animation: pulse 2s ease-in-out infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.6; }
-    }
+
+    /* ── States ─────────────────────────────────────────────────── */
+    .status.success { color: var(--success); }
+    .status.error { color: var(--error); }
   </style>
 </head>
 <body>
   <div class="frame">
     <div class="logo"><img src="${safeIcon}" alt="CallerFlash" /></div>
-    <div class="title" id="title">Updating CallerFlash</div>
-    <div class="subtitle" id="subtitle">Downloading the latest version…</div>
-    <div class="progress-area">
-      <div class="progress-track"><div class="progress-fill" id="fill"></div></div>
-      <div class="progress-info">
-        <span id="percent">0%</span>
-        <span id="size">—</span>
+
+    <div class="progress-ring">
+      <svg viewBox="0 0 120 120">
+        <defs>
+          <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#60cdff"/>
+            <stop offset="100%" stop-color="#6ccb5f"/>
+          </linearGradient>
+        </defs>
+        <circle class="track" cx="60" cy="60" r="54"/>
+        <circle class="fill indeterminate" id="ringFill" cx="60" cy="60" r="54"
+                style="transform-origin: center;"/>
+      </svg>
+      <div class="center-text">
+        <div class="percent" id="percent">—</div>
+        <div class="label" id="label">Waiting</div>
       </div>
     </div>
-    <div class="status-text" id="status"></div>
-    <div class="version-badge" id="version"></div>
+
+    <div class="status" id="status">Preparing…</div>
+    <div class="detail" id="detail"></div>
+    <div class="size-info" id="size"></div>
+    <div class="version-badge" id="version">v${app.getVersion()}</div>
   </div>
   <script>
-    const el = {
-      fill: document.getElementById('fill'),
-      percent: document.getElementById('percent'),
-      size: document.getElementById('size'),
-      status: document.getElementById('status'),
-      title: document.getElementById('title'),
-      subtitle: document.getElementById('subtitle'),
-      version: document.getElementById('version'),
-    };
-    function setProgress(pct, downloaded, total) {
-      el.fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
-      el.percent.textContent = Math.round(pct) + '%';
-      if (downloaded != null && total != null) {
-        const dl = (downloaded / 1048576).toFixed(1);
-        const tot = (total / 1048576).toFixed(1);
-        el.size.textContent = dl + ' / ' + tot + ' MB';
-      }
+    const ring = document.getElementById('ringFill');
+    const percent = document.getElementById('percent');
+    const label = document.getElementById('label');
+    const status = document.getElementById('status');
+    const detail = document.getElementById('detail');
+    const sizeEl = document.getElementById('size');
+    const versionEl = document.getElementById('version');
+
+    const CIRC = 2 * Math.PI * 54; // ~339.29
+
+    function setProgress(pct) {
+      // Switch from indeterminate to determinate
+      ring.classList.remove('indeterminate');
+      ring.style.transform = 'none';
+      const offset = CIRC * (1 - pct / 100);
+      ring.style.strokeDashoffset = offset;
+      percent.textContent = Math.round(pct) + '%';
+      label.textContent = 'Downloading';
     }
+
+    function setIndeterminate() {
+      ring.classList.add('indeterminate');
+      ring.style.strokeDashoffset = CIRC * 0.75;
+      percent.textContent = '—';
+      label.textContent = 'Working';
+    }
+
     function setStatus(text, cls) {
-      el.status.textContent = text || '';
-      el.status.className = 'status-text' + (cls ? ' ' + cls : '');
+      status.textContent = text || '';
+      status.className = 'status' + (cls ? ' ' + cls : '');
     }
-    function setTitles(title, subtitle) {
-      if (title) el.title.textContent = title;
-      if (subtitle) el.subtitle.textContent = subtitle;
-    }
-    function setVersion(text) { el.version.textContent = text; }
-    window.callerflashUpdater?.onProgress?.((data) => {
-      setProgress(data.percent, data.bytesTransferred, data.total);
-    });
-    window.callerflashUpdater?.onStatus?.((data) => {
-      if (data.status === 'downloading') {
-        setTitles('Updating CallerFlash', 'Downloading the latest version…');
-        setStatus(data.message || 'Downloading…');
-      } else if (data.status === 'installing') {
-        setTitles('Installing update', 'Almost done…');
-        setProgress(100, null, null);
-        setStatus('Installing and restarting…');
-      } else if (data.status === 'success') {
-        setTitles('Update complete', 'Restarting CallerFlash…');
-        setStatus('Success!', 'success');
-      } else if (data.status === 'error') {
-        setStatus(data.message || 'Update failed', 'error');
-      } else if (data.status === 'no-update') {
-        setTitles('Up to date', 'You are running the latest version.');
-        setStatus('');
-        el.subtitle.textContent = data.message || '';
+
+    function setDetail(text) { detail.textContent = text || ''; }
+    function setSize(text) { sizeEl.textContent = text || ''; }
+    function setVersion(text) { versionEl.textContent = text; }
+
+    // Event listeners from main process
+    window.callerflashUpdater?.onProgress?.(function(data) {
+      if (data.percent != null && data.percent > 0) {
+        setProgress(data.percent);
+      }
+      if (data.bytesTransferred != null && data.total != null) {
+        const dl = (data.bytesTransferred / 1048576).toFixed(1);
+        const tot = (data.total / 1048576).toFixed(1);
+        setSize(dl + ' / ' + tot + ' MB');
       }
     });
-    window.callerflashUpdater?.onVersion?.((data) => {
+
+    window.callerflashUpdater?.onStatus?.(function(data) {
+      if (data.status === 'downloading') {
+        setStatus('Downloading update', '');
+        setDetail(data.message || 'Fetching from GitHub…');
+        if (!ring.classList.contains('indeterminate')) setIndeterminate();
+      } else if (data.status === 'installing') {
+        setStatus('Installing update', '');
+        setDetail('Applying update and restarting…');
+        label.textContent = 'Installing';
+        ring.classList.remove('indeterminate');
+        ring.style.strokeDashoffset = 0;
+        percent.textContent = '100%';
+      } else if (data.status === 'success') {
+        setStatus('Update complete', 'success');
+        setDetail('CallerFlash is restarting…');
+        label.textContent = 'Done';
+      } else if (data.status === 'error') {
+        setStatus('Update failed', 'error');
+        setDetail(data.message || 'An error occurred');
+        label.textContent = 'Error';
+      } else if (data.status === 'checking') {
+        setStatus('Checking for updates', '');
+        setDetail('Contacting GitHub…');
+        setIndeterminate();
+      }
+    });
+
+    window.callerflashUpdater?.onVersion?.(function(data) {
       setVersion(data.current + ' → ' + data.latest);
     });
   </script>
@@ -240,20 +293,18 @@ function buildUpdaterHtml(iconDataUrl) {
 function createUpdaterWindow(mainWindow) {
   if (updaterWindow && !updaterWindow.isDestroyed()) return updaterWindow;
 
-  // Position: centered on the main window's saved position
-  let savedX = null, savedY = null;
+  // Center on main window position
+  let posX = null, posY = null;
   if (mainWindow && !mainWindow.isDestroyed()) {
     const [x, y] = mainWindow.getPosition();
-    savedX = x; savedY = y;
     const [w, h] = mainWindow.getSize();
-    // Center the 320x520 updater on the main window
-    savedX = Math.round(x + (w / 2) - 160);
-    savedY = Math.round(y + (h / 2) - 260);
+    posX = Math.round(x + (w / 2) - 170);
+    posY = Math.round(y + (h / 2) - 240);
   }
 
   updaterWindow = new BrowserWindow({
-    width: 320,
-    height: 520,
+    width: 340,
+    height: 480,
     frame: false,
     resizable: false,
     maximizable: false,
@@ -265,8 +316,8 @@ function createUpdaterWindow(mainWindow) {
     alwaysOnTop: true,
     backgroundColor: '#0d0d0d',
     icon: loadAppIcon(),
-    x: savedX ?? undefined,
-    y: savedY ?? undefined,
+    x: posX ?? undefined,
+    y: posY ?? undefined,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -275,8 +326,7 @@ function createUpdaterWindow(mainWindow) {
     },
   });
 
-  if (savedX == null) updaterWindow.center();
-
+  if (posX == null) updaterWindow.center();
   updaterWindow.setMenuBarVisibility(false);
 
   updaterWindow.on('close', (event) => {
@@ -290,9 +340,8 @@ function createUpdaterWindow(mainWindow) {
   updaterWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildUpdaterHtml(loadAppIconDataURL()))}`);
   updaterWindow.once('ready-to-show', () => {
     updaterWindow.show();
-    // Send current version info for the badge
     updaterWindow.webContents.send('updater:version', {
-      current: app.getVersion(),
+      current: 'v' + app.getVersion(),
       latest: '…',
     });
   });
@@ -300,7 +349,7 @@ function createUpdaterWindow(mainWindow) {
   return updaterWindow;
 }
 
-// ── Send status to updater window renderer ─────────────────────────────
+// ── Send to updater window ─────────────────────────────────────────────
 function sendUpdaterStatus(payload) {
   if (updaterWindow && !updaterWindow.isDestroyed()) {
     updaterWindow.webContents.send('updater:status', payload);
@@ -315,116 +364,138 @@ function sendUpdaterProgress(payload) {
 
 // ── Public API ─────────────────────────────────────────────────────────
 
-/**
- * Check for updates. Returns release info or null.
- * Does NOT download — just checks.
- */
 function checkForUpdates() {
   return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(null), 15000);
+    const timeout = setTimeout(() => resolve({ error: 'Connection timeout — check your internet' }), 15000);
 
     autoUpdater.once('update-available', (info) => {
       clearTimeout(timeout);
+      console.log('[updater] update available:', info.version);
       if (updaterWindow && !updaterWindow.isDestroyed()) {
         updaterWindow.webContents.send('updater:version', {
-          current: app.getVersion(),
-          latest: info.version,
+          current: 'v' + app.getVersion(),
+          latest: 'v' + info.version,
         });
       }
       resolve({ version: info.version, notes: info.releaseNotes, date: info.releaseDate });
     });
-    autoUpdater.once('update-not-cancelled', () => {});
     autoUpdater.once('update-not-available', (info) => {
       clearTimeout(timeout);
+      console.log('[updater] up to date:', info?.version);
       resolve({ upToDate: true, version: info?.version });
     });
     autoUpdater.once('error', (err) => {
       clearTimeout(timeout);
+      console.error('[updater] check error:', err.message);
       resolve({ error: err.message });
     });
 
     autoUpdater.checkForUpdates().catch((err) => {
       clearTimeout(timeout);
+      console.error('[updater] checkForUpdates failed:', err.message);
       resolve({ error: err.message });
     });
   });
 }
 
-/**
- * Download + install with progress UI.
- * Shows the Discord-style updater window.
- */
 function downloadAndInstall(mainWindow) {
-  createUpdaterWindow(mainWindow);
-  mainWindowRef = mainWindow;
+  // Don't create a new window if one exists
+  if (!updaterWindow || !updaterWindow.isDestroyed()) {
+    if (updaterWindow) updaterWindow.show();
+  } else {
+    createUpdaterWindow(mainWindow);
+  }
 
-  sendUpdaterStatus({ status: 'downloading', message: 'Connecting to GitHub…' });
+  let progressHandler = null;
+  let started = false;
 
   // Progress events
-  autoUpdater.on('download-progress', (progress) => {
+  progressHandler = (progress) => {
+    started = true;
     sendUpdaterProgress({
       percent: progress.percent || 0,
       bytesTransferred: progress.bytesTransferred,
       total: progress.total,
     });
-    sendUpdaterStatus({
-      status: 'downloading',
-      message: `Downloading ${Math.round(progress.percent || 0)}%`,
-    });
-  });
+  };
+  autoUpdater.on('download-progress', progressHandler);
 
   // Download complete → install
   autoUpdater.once('update-downloaded', (info) => {
+    autoUpdater.removeListener('download-progress', progressHandler);
     sendUpdaterStatus({ status: 'installing', message: 'Installing update…' });
-    // Quit and install. electron-updater handles the NSIS silent install
-    // and relaunch automatically.
-    isQuittingForUpdate = true;
     autoUpdater.quitAndInstall(true, true);
   });
 
   autoUpdater.once('error', (err) => {
-    sendUpdaterStatus({ status: 'error', message: err.message });
+    autoUpdater.removeListener('download-progress', progressHandler);
+    console.error('[updater] error:', err.message);
+    sendUpdaterStatus({ status: 'error', message: err.message || 'Download failed' });
     updaterCanClose = true;
     setTimeout(() => {
       if (updaterWindow && !updaterWindow.isDestroyed()) {
         updaterWindow.close();
         updaterWindow = null;
       }
-    }, 4000);
+    }, 5000);
   });
+
+  // Safety timeout: if no progress after 15s, show error
+  const safetyTimeout = setTimeout(() => {
+    if (!started) {
+      autoUpdater.removeListener('download-progress', progressHandler);
+      sendUpdaterStatus({ status: 'error', message: 'Download did not start — check your internet connection or try again later.' });
+      updaterCanClose = true;
+      setTimeout(() => {
+        if (updaterWindow && !updaterWindow.isDestroyed()) {
+          updaterWindow.close();
+          updaterWindow = null;
+        }
+      }, 5000);
+    }
+  }, 15000);
+
+  // Clear safety timeout once download starts
+  autoUpdater.once('download-progress', () => clearTimeout(safetyTimeout));
 
   // Start download
-  autoUpdater.downloadUpdate().catch((err) => {
-    sendUpdaterStatus({ status: 'error', message: err.message });
-    updaterCanClose = true;
-  });
+  sendUpdaterStatus({ status: 'downloading', message: 'Connecting to GitHub…' });
+  autoUpdater.downloadUpdate()
+    .then(() => {
+      clearTimeout(safetyTimeout);
+    })
+    .catch((err) => {
+      clearTimeout(safetyTimeout);
+      autoUpdater.removeListener('download-progress', progressHandler);
+      console.error('[updater] downloadUpdate failed:', err.message);
+      sendUpdaterStatus({ status: 'error', message: err.message || 'Download failed' });
+      updaterCanClose = true;
+      setTimeout(() => {
+        if (updaterWindow && !updaterWindow.isDestroyed()) {
+          updaterWindow.close();
+          updaterWindow = null;
+        }
+      }, 5000);
+    });
 }
 
-/**
- * Set the update channel (stable/beta/nightly).
- */
 function setUpdateChannel(channel) {
+  // electron-updater reads channel from latest.yml filename
+  // but we can also set it directly
   autoUpdater.channel = channel || 'stable';
 }
 
-/**
- * Wire up IPC handlers for the renderer.
- */
 function initUpdaterIPC(mainWindow) {
   // Check for updates (no download)
   ipcMain.handle('updater:check', async () => {
+    setUpdateChannel(mainWindow ? null : null); // ensure channel is current
     const result = await checkForUpdates();
-    if (result?.version) {
-      sendUpdaterStatus({
-        status: 'downloading',
-        message: `Update available: v${result.version}`,
-      });
-    }
-    return result;
+    return result || { upToDate: true };
   });
 
   // Download + install (shows updater window)
   ipcMain.on('updater:install', () => {
+    console.log('[updater] install requested, channel:', autoUpdater.channel);
     downloadAndInstall(mainWindow);
   });
 

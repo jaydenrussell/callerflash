@@ -719,9 +719,7 @@ export function AutoUpdate() {
               Update available: {formatVersion(updateInfo.latestVersion)}
             </p>
             <p className="text-[11px] text-win-text-secondary mt-0.5">
-              {downloadedBlobUrl
-                ? 'Downloaded and verified — click Install to update.'
-                : `Newer than your current ${formatVersion(updateInfo.currentVersion)} on the ${updateInfo.updateChannel} channel.`}
+              {`Newer than your current ${formatVersion(updateInfo.currentVersion)} on the ${updateInfo.updateChannel} channel.`}
             </p>
           </div>
           <div className="flex-shrink-0">
@@ -733,7 +731,7 @@ export function AutoUpdate() {
               <Download className={`w-4 h-4 ${phase === 'downloading' || phase === 'installing' ? 'animate-spin' : ''}`} />
               {phase === 'downloading' ? 'Downloading…'
                 : phase === 'installing' ? 'Installing…'
-                : 'Install Update'}
+                : 'Update Now'}
             </button>
           </div>
         </div>
