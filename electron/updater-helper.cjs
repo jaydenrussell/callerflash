@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -13,8 +13,6 @@ function loadTrayIcon() {
     path.join(resPath, 'cflogo.png'),
     path.join(__dirname, '../buildResources/cflogo.ico'),
     path.join(__dirname, '../buildResources/cflogo.png'),
-    path.join(__dirname, '../buildResources/tray-icon.ico'),
-    path.join(__dirname, '../buildResources/tray-icon.png'),
     path.join(__dirname, '../buildResources/icon.ico'),
     path.join(__dirname, '../buildResources/icon.png'),
   ];
@@ -35,230 +33,136 @@ function buildUpdaterHtml(iconDataUrl) {
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Updating CallerFlash</title>
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, viewport-fit=cover" />
   <style>
     :root {
       color-scheme: dark;
-      --bg: #111315;
-      --surface: #171b20;
-      --surface-2: #1f242b;
+      --bg: #0a0a0a;
+      --surface: #161616;
       --border: rgba(255, 255, 255, 0.08);
-      --text: #eef2ff;
-      --muted: #9ca3af;
+      --text: #ffffff;
       --accent: #60cdff;
       --success: #6ccb5f;
       --error: #ff8a80;
-      --shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
     }
     html, body {
       margin: 0;
-      width: 100%;
-      height: 100%;
-      background: radial-gradient(circle at top, #17202a, var(--bg) 58%);
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      background: var(--bg);
       font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
       color: var(--text);
       overflow: hidden;
     }
-    .shell {
-      box-sizing: border-box;
-      width: 100%;
-      height: 100%;
-      padding: 26px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .card {
-      width: min(560px, 100%);
-      background: linear-gradient(180deg, rgba(31, 36, 43, 0.96), rgba(17, 19, 21, 0.98));
+    .phone-frame {
+      width: 340px;
+      height: 580px;
+      background: var(--surface);
+      border-radius: 48px;
       border: 1px solid var(--border);
-      border-radius: 20px;
-      box-shadow: var(--shadow);
-      padding: 24px;
-    }
-    .header {
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+      padding: 32px 24px;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 16px;
-      margin-bottom: 18px;
+      margin: 0 auto;
+      position: relative;
+      top: 50%;
+      transform: translateY(-50%);
     }
     .logo {
-      width: 58px;
-      height: 58px;
-      border-radius: 16px;
-      padding: 10px;
-      box-sizing: border-box;
+      width: 80px;
+      height: 80px;
+      border-radius: 22px;
+      padding: 12px;
       background: rgba(96, 205, 255, 0.12);
-      border: 1px solid rgba(96, 205, 255, 0.18);
+      border: 1px solid rgba(96, 205, 255, 0.22);
       display: grid;
       place-items: center;
-      flex: 0 0 auto;
+      margin-bottom: 32px;
     }
     .logo img {
       width: 100%;
       height: 100%;
       object-fit: contain;
     }
-    .eyebrow {
-      color: var(--accent);
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      margin: 0 0 4px;
-      font-weight: 700;
-    }
-    h1 {
-      margin: 0;
-      font-size: 22px;
-      line-height: 1.1;
-    }
-    .sub {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.45;
-    }
-    .progress-shell {
-      margin-top: 18px;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      height: 14px;
-      overflow: hidden;
-      position: relative;
-    }
-    .progress-bar {
-      width: 32%;
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, rgba(108, 203, 95, 0.95), rgba(96, 205, 255, 0.95));
-      box-shadow: 0 0 20px rgba(96, 205, 255, 0.25);
-      animation: glide 1.6s ease-in-out infinite;
-      transform-origin: left center;
-    }
-    .progress-shell[data-mode='determinate'] .progress-bar {
-      animation: none;
-      width: var(--progress, 0%);
-    }
-    .progress-shell[data-mode='determinate']::after {
-      display: none;
-    }
-    .progress-shell::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
-      transform: translateX(-100%);
-      animation: sweep 1.8s ease-in-out infinite;
-    }
-    @keyframes glide {
-      0% { transform: translateX(-6%); }
-      50% { transform: translateX(160%); }
-      100% { transform: translateX(-6%); }
-    }
-    @keyframes sweep {
-      0% { transform: translateX(-100%); }
-      100% { transform: translateX(100%); }
-    }
-    .footer {
-      margin-top: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .status {
+    .progress-label {
+      font-size: 17px;
       font-weight: 600;
+      margin-bottom: 12px;
       color: var(--text);
+      text-align: center;
     }
-    .hint {
-      margin-top: 10px;
-      font-size: 12px;
-      color: var(--muted);
+    .progress-percent {
+      font-size: 13px;
+      color: var(--accent);
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .progress-track {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--success));
+      border-radius: 999px;
+      transition: width 0.3s ease-out;
+    }
+    .status-text {
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--accent);
+      text-align: center;
     }
     .success { color: var(--success); }
     .error { color: var(--error); }
   </style>
 </head>
 <body>
-  <div class="shell">
-    <div class="card">
-      <div class="header">
-        <div class="logo"><img src="${safeIcon}" alt="CallerFlash" /></div>
-        <div>
-          <p class="eyebrow">CallerFlash updater</p>
-          <h1 id="title">Preparing update…</h1>
-          <p class="sub" id="subtitle">This window stays open while the silent installer works.</p>
-        </div>
-      </div>
-
-      <div class="progress-shell" id="progressShell" data-mode="indeterminate">
-        <div class="progress-bar" id="progressBar"></div>
-      </div>
-
-      <div class="footer">
-        <div class="status" id="status">Waiting for installer…</div>
-        <div id="percent">—</div>
-      </div>
-      <div class="hint" id="hint">You can keep using your desktop; CallerFlash will reopen automatically when installation completes.</div>
-    </div>
+  <div class="phone-frame">
+    <div class="logo"><img src="${safeIcon}" alt="CallerFlash" /></div>
+    <div class="progress-label" id="label">Preparing update…</div>
+    <div class="progress-percent" id="percent">—</div>
+    <div class="progress-track"><div class="progress-fill" id="fill"></div></div>
+    <div class="status-text" id="status">Waiting…</div>
   </div>
-
   <script>
     const state = {
-      title: document.getElementById('title'),
-      subtitle: document.getElementById('subtitle'),
-      status: document.getElementById('status'),
-      hint: document.getElementById('hint'),
+      label: document.getElementById('label'),
       percent: document.getElementById('percent'),
-      shell: document.getElementById('progressShell'),
+      fill: document.getElementById('fill'),
+      status: document.getElementById('status'),
     };
 
     function render(payload) {
       if (!payload) return;
+      const pct = typeof payload.progress === 'number' ? payload.progress : 0;
+      state.fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
+      state.percent.textContent = Math.round(pct) + '%';
+
       if (payload.status === 'downloading') {
-        state.title.textContent = 'Downloading update…';
-        state.subtitle.textContent = payload.message || 'Fetching the signed installer.';
-        state.status.textContent = payload.message || 'Downloading…';
-        if (typeof payload.progress === 'number') {
-          state.shell.dataset.mode = 'determinate';
-          state.shell.style.setProperty('--progress', Math.max(0, Math.min(100, payload.progress)) + '%');
-          state.percent.textContent = Math.round(payload.progress) + '%';
-        } else {
-          state.shell.dataset.mode = 'indeterminate';
-          state.percent.textContent = '—';
-        }
+        state.label.textContent = 'Downloading update…';
+        state.status.textContent = payload.message || 'Fetching installer…';
       } else if (payload.status === 'installing') {
-        state.title.textContent = 'Installing update…';
-        state.subtitle.textContent = payload.message || 'The installer is running silently in the background.';
+        state.label.textContent = 'Installing update…';
         state.status.textContent = payload.message || 'Installing…';
-        state.percent.textContent = '—';
-        state.shell.dataset.mode = 'indeterminate';
       } else if (payload.status === 'success') {
-        state.title.textContent = 'Update complete';
-        state.subtitle.textContent = payload.message || 'CallerFlash is restarting now.';
-        state.status.textContent = payload.message || 'Done';
+        state.label.textContent = 'Update complete';
+        state.status.textContent = 'Relaunching CallerFlash…';
         state.status.classList.add('success');
-        state.hint.textContent = 'The updater will close once CallerFlash relaunches.';
-        state.percent.textContent = '✓';
-        state.shell.dataset.mode = 'determinate';
-        state.shell.style.setProperty('--progress', '100%');
       } else if (payload.status === 'error') {
-        state.title.textContent = 'Update failed';
-        state.subtitle.textContent = payload.message || 'The installer could not finish.';
+        state.label.textContent = 'Update failed';
         state.status.textContent = payload.message || 'Error';
         state.status.classList.add('error');
-        state.hint.textContent = 'You can close this window and try again from Updates.';
-        state.percent.textContent = '!';
-        state.shell.dataset.mode = 'determinate';
-        state.shell.style.setProperty('--progress', '100%');
       } else if (payload.status === 'starting') {
-        state.title.textContent = payload.message || 'Preparing update…';
-        state.subtitle.textContent = payload.detail || 'Opening a dedicated installer window.';
+        state.label.textContent = payload.message || 'Preparing update…';
+        state.status.textContent = payload.detail || 'Starting installer…';
       }
     }
 
@@ -270,44 +174,27 @@ function buildUpdaterHtml(iconDataUrl) {
 
 function createUpdaterWindow() {
   const icon = loadTrayIcon();
-  const menu = Menu.buildFromTemplate([
-    {
-      label: 'CallerFlash',
-      submenu: [
-        { label: 'Updating CallerFlash', enabled: false },
-        { type: 'separator' },
-        {
-          label: 'Open Releases',
-          click: () => shell.openExternal('https://github.com/jaydenrussell/callerflash/releases'),
-        },
-      ],
-    },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'Project site',
-          click: () => shell.openExternal('https://github.com/jaydenrussell/callerflash'),
-        },
-      ],
-    },
-  ]);
-  Menu.setApplicationMenu(menu);
+  const savedStatePath = path.join(app.getPath('userData'), 'main-window-state.json');
+  let savedX = null, savedY = null;
+  try {
+    if (fs.existsSync(savedStatePath)) {
+      const saved = JSON.parse(fs.readFileSync(savedStatePath, 'utf8'));
+      savedX = Number.isFinite(saved.x) ? saved.x : null;
+      savedY = Number.isFinite(saved.y) ? saved.y : null;
+    }
+  } catch {}
 
   updaterWindow = new BrowserWindow({
-    width: 560,
-    height: 340,
-    minWidth: 520,
-    minHeight: 320,
+    width: 340,
+    height: 580,
     resizable: false,
     maximizable: false,
     minimizable: false,
-    closable: true,
+    closable: false,
     show: false,
-    title: 'CallerFlash updater',
+    titleBarStyle: 'hidden',
+    backgroundColor: '#0a0a0a',
     icon,
-    backgroundColor: '#111315',
-    autoHideMenuBar: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -315,6 +202,12 @@ function createUpdaterWindow() {
       preload: path.join(__dirname, 'updaterPreload.cjs'),
     },
   });
+
+  if (savedX !== null && savedY !== null) {
+    updaterWindow.setPosition(Math.round(savedX + 230), Math.round(savedY + 70));
+  } else {
+    updaterWindow.center();
+  }
 
   updaterWindow.on('close', (event) => {
     if (!updaterCanClose) {
@@ -383,7 +276,7 @@ async function startUpdaterHelper() {
     const appPath = process.env.CALLERFLASH_APP_PATH || process.execPath;
 
     if (!installerPath || !fs.existsSync(installerPath)) {
-      setUpdaterStatus({ status: 'error', message: 'Installer path missing or unavailable.' });
+      setUpdaterStatus({ status: 'error', message: 'Installer path missing.' });
       updaterCanClose = true;
       setTimeout(() => app.quit(), 2500);
       return;
@@ -391,8 +284,8 @@ async function startUpdaterHelper() {
 
     setUpdaterStatus({
       status: 'installing',
-      message: 'Silent installer launched in a separate updater monitor.',
-      detail: installDir ? `Target folder: ${installDir}` : 'Target folder: default install location',
+      message: 'Running silent installer…',
+      progress: 50,
     });
 
     try {
