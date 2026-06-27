@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 jobs:
-  sync-and-release:
-    name: Merge nightly → beta + Release
+  sync:
+    name: Merge nightly → beta
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -33,8 +33,10 @@ jobs:
       - name: Push beta
         run: git push origin beta --force
 
-      - name: Release
-        uses: ./.github/workflows/release.yml
-        with:
-          channel: beta
-        secrets: inherit
+  release:
+    name: Build & Release
+    needs: sync
+    uses: ./.github/workflows/release.yml
+    with:
+      channel: beta
+    secrets: inherit
