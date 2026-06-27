@@ -14,19 +14,19 @@ const https = require('https');
 const http = require('http');
 const { spawn } = require('child_process');
 const sipClient = require('./sipClient.cjs');
-const { startUpdaterHelper } = require('./updater-helper.cjs');
 const { downloadAndVerifyUpdateArtifact } = require('./updateVerifier.cjs');
 
 // ── Single-instance lock ───────────────────────────────────────────────
 // If a second copy is launched (double-click on the .exe again, etc.),
 // focus the existing window instead of starting a duplicate.
-const isUpdaterHelper = process.argv.includes('--updater-helper');
-const isStartMinimized = process.argv.includes('--start-minimized');
-const gotSingleInstanceLock = isUpdaterHelper ? true : app.requestSingleInstanceLock();
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
   process.exit(0);
 }
+
+// Detect launch flags
+const isStartMinimized = process.argv.includes('--start-minimized');
 
 // Disable hardware acceleration for better compatibility in background apps
 app.disableHardwareAcceleration();
@@ -581,8 +581,8 @@ ipcMain.handle('updater:download', async () => ({ status: 'noop' }));
 /**
  * One-click update: receive verified release metadata from the renderer,
  * download the installer in the main process, verify the checksum and
- * detached signature again, then hand off execution to the dedicated
- * updater helper window.
+ * detached signature, then run the silent installer directly and show
+ * progress in the main window. No helper process needed.
  */
 ipcMain.on('updater:install', async (_event, artifact) => {
   if (!artifact || typeof artifact !== 'object') {
@@ -602,8 +602,9 @@ ipcMain.on('updater:install', async (_event, artifact) => {
     });
   }
 
+  let savedPath;
   try {
-    const savedPath = await downloadAndVerifyUpdateArtifact(artifact, filePath, (progress) => {
+    savedPath = await downloadAndVerifyUpdateArtifact(artifact, filePath, (progress) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('updater:status', {
           status: 'downloading',
@@ -612,35 +613,35 @@ ipcMain.on('updater:install', async (_event, artifact) => {
         });
       }
     });
-
+  } catch (err) {
+    console.error('[updater] Download/verify failed:', err.message);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('updater:status', {
-        status: 'installing',
-        message: 'Launching dedicated installer window…',
-      });
+      mainWindow.webContents.send('updater:status', { status: 'error', message: err.message });
     }
+    return;
+  }
 
-    const installDir = path.dirname(process.execPath);
-    const helperEnv = {
-      ...process.env,
-      CALLERFLASH_INSTALLER_PATH: savedPath,
-      CALLERFLASH_INSTALL_DIR: installDir,
-      CALLERFLASH_APP_PATH: process.execPath,
-      CALLERFLASH_UPDATE_VERSION: String(artifact.version || ''),
-    };
-    const helper = spawn(process.execPath, ['--updater-helper'], {
-      detached: true,
-      stdio: 'ignore',
-      shell: false,
-      windowsHide: true,
-      env: helperEnv,
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('updater:status', {
+      status: 'installing',
+      message: 'Running silent installer…',
+      progress: 50,
     });
-    helper.unref();
+  }
 
+  // Run the silent installer directly from the main process.
+  // PowerShell waits for NSIS to finish, then relaunches the app.
+  const installDir = path.dirname(process.execPath);
+  const appPath = process.execPath;
+
+  try {
+    await runWindowsInstaller(savedPath, installDir, appPath);
+    // If we get here, the installer spawned and PowerShell detached.
+    // Quit the running app so NSIS can replace the files.
     setTimeout(() => {
       isQuitting = true;
       app.quit();
-    }, 250);
+    }, 1000);
   } catch (err) {
     console.error('[updater] Install failed:', err.message);
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -648,6 +649,58 @@ ipcMain.on('updater:install', async (_event, artifact) => {
     }
   }
 });
+
+function psQuote(value) {
+  return `'${String(value || '').replace(/'/g, "''")}'`;
+}
+
+function runWindowsInstaller(installerPath, installDir, appPath) {
+  return new Promise((resolve, reject) => {
+    // Two-stage strategy:
+    // 1. Spawn a detached PowerShell that waits for THIS process (the
+    //    Electron app) to exit, THEN runs the silent installer, THEN
+    //    relaunches the app.
+    // 2. The Electron app quits immediately after spawning, so NSIS can
+    //    replace files without contention.
+    const parentPid = process.pid;
+    const psScript = [
+      '$ErrorActionPreference = "SilentlyContinue";',
+      `$installer = ${psQuote(installerPath)};`,
+      `$appPath = ${psQuote(appPath)};`,
+      `$installDir = ${psQuote(installDir || '')};`,
+      `$parentPid = ${parentPid};`,
+      // Wait for the Electron app to exit so files are no longer locked.
+      'try { Get-Process -Id $parentPid -ErrorAction SilentlyContinue | Wait-Process -Timeout 30 } catch {}',
+      // Small delay to ensure file handles are fully released.
+      'Start-Sleep -Seconds 2;',
+      // Run the silent NSIS installer.
+      '$args = @("/S");',
+      'if ($installDir -and $installDir -notmatch "(?i)temp|tmp") { $args += "/D=$installDir" }',
+      '$proc = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru -NoNewWindow;',
+      // On success, relaunch the app.
+      'if ($proc.ExitCode -eq 0) {',
+      '  if ($appPath) { Start-Process -FilePath $appPath | Out-Null }',
+      '}',
+    ].join(' ');
+
+    const encodedCommand = Buffer.from(psScript, 'utf16le').toString('base64');
+    const launcher = spawn('powershell.exe', [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-EncodedCommand',
+      encodedCommand,
+    ], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    launcher.unref();
+    // Resolve immediately — the detached PS will handle the rest after
+    // we exit. We don't wait for it.
+    resolve();
+  });
+}
 
 ipcMain.on('updater:set-channel', () => { /* handled by separate feature */ });
 
@@ -709,9 +762,7 @@ ipcMain.on('tray:set-update-available', (_event, version) => {
 });
 
 // ── Second-instance handler ────────────────────────────────────────────
-if (!isUpdaterHelper) {
-  app.on('second-instance', () => showWindow());
-}
+app.on('second-instance', () => showWindow());
 
 // ── Startup update check ─────────────────────────────────────────────
 // Runs an automatic update check on every app launch, respecting the
@@ -765,11 +816,6 @@ function scheduleStartupUpdateCheck() {
 
 // ── App lifecycle ──────────────────────────────────────────────────────
 app.whenReady().then(() => {
-  if (isUpdaterHelper) {
-    startUpdaterHelper();
-    return;
-  }
-
   createWindow();
   createTray();
 
