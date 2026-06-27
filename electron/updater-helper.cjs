@@ -240,15 +240,24 @@ function shouldAppendInstallDirArg(installDir) {
 }
 
 function launchWindowsInstaller(installerPath, installDir, appPath) {
+  // Run as detached process group so the helper can exit without
+  // pulling the installer down with it (Windows job objects).
   const psScript = [
     '$ErrorActionPreference = "Stop";',
     `$installer = ${psQuote(installerPath)};`,
     `$appPath = ${psQuote(appPath)};`,
-    `$args = @("/S");`,
-    shouldAppendInstallDirArg(installDir) ? `$args += "/D=${String(installDir).replace(/'/g, "''")}";` : '',
-    '$proc = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru;',
-    'if ($proc.ExitCode -eq 0 -and $appPath) { Start-Process -FilePath $appPath | Out-Null }',
-    'exit $proc.ExitCode;'
+    `$installDir = ${psQuote(installDir || '')};`,
+    '$args = @("/S");',
+    'if ($installDir -and $installDir -notmatch "(?i)temp|tmp") { $args += "/D=$installDir" }',
+    // Use Start-Process with -Wait so PowerShell stays alive until
+    // the installer finishes. Use -PassThru to capture exit code.
+    '$proc = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru -NoNewWindow;',
+    'if ($proc.ExitCode -eq 0) {',
+    '  if ($appPath) { Start-Process -FilePath $appPath | Out-Null }',
+    '  exit 0',
+    '} else {',
+    '  exit $proc.ExitCode',
+    '}',
   ].filter(Boolean).join(' ');
 
   const encodedCommand = Buffer.from(psScript, 'utf16le').toString('base64');
@@ -288,18 +297,34 @@ async function startUpdaterHelper() {
       progress: 50,
     });
 
+    // Don't quit the helper window immediately — the silent installer
+    // takes time and the user needs to see progress + completion.
+    // The PowerShell launcher is detached, so it survives our exit.
     try {
       const launcher = launchWindowsInstaller(installerPath, installDir, appPath);
       launcher.on('error', (err) => {
         setUpdaterStatus({ status: 'error', message: err.message });
         updaterCanClose = true;
+        setTimeout(() => app.quit(), 3000);
       });
-      updaterCanClose = true;
-      setTimeout(() => app.quit(), 400);
+
+      // Give the installer time to launch and start writing files.
+      // The PS launcher is detached so it survives us — we only need
+      // to keep the progress window visible long enough for the user
+      // to see "Installing…" → "Done" before it closes.
+      setTimeout(() => {
+        setUpdaterStatus({
+          status: 'success',
+          message: 'Update installed — CallerFlash is restarting…',
+          progress: 100,
+        });
+        updaterCanClose = true;
+        setTimeout(() => app.quit(), 1500);
+      }, 2500);
     } catch (err) {
       setUpdaterStatus({ status: 'error', message: err.message });
       updaterCanClose = true;
-      setTimeout(() => app.quit(), 2500);
+      setTimeout(() => app.quit(), 3000);
     }
   });
 }

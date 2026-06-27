@@ -651,11 +651,27 @@ export function AutoUpdate() {
         </div>
       </div>
 
-      {/* Outcome banner — only the serious cases surface here:
-          verification-failed gets a warning. Missing-assets is
-          expected for manual uploads and is shown as a soft info
-          hint inline with the existing Updates header so the user
-          knows there's a newer release + where to get it. */}
+      {/* Outcome banner — surfaces three cases from a manual check:
+          • no-update          → green/info confirmation ("you're up to date")
+          • verification-failed → warning with link to GitHub
+          Missing-assets is shown inline with the Updates header. */}
+      {outcome?.kind === 'no-update' && phase === 'idle' && (
+        <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-win-success/10 border border-win-success/30">
+          <Check className="w-4 h-4 text-win-success flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-win-success">No update available</p>
+            <p className="text-xs text-win-text-secondary leading-snug mt-0.5">{outcome.message}</p>
+          </div>
+          <button
+            onClick={() => setOutcome(null)}
+            className="text-win-text-tertiary hover:text-win-text transition-colors flex-shrink-0"
+            title="Dismiss"
+          >
+            <XIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {outcome?.kind === 'verification-failed' && phase === 'idle' && (
         <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-win-warning/10 border border-win-warning/30">
           <AlertCircle className="w-4 h-4 text-win-warning flex-shrink-0 mt-0.5" />
