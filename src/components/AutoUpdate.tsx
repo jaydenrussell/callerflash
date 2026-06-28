@@ -188,6 +188,7 @@ export function AutoUpdate() {
   const [artifactUrl, setArtifactUrl] = useState<string | null>(null);
   const [verifiedArtifact, setVerifiedArtifact] = useState<UpdateArtifact | null>(null);
   const [downloadedBlobUrl, setDownloadedBlobUrl] = useState<string | null>(null);
+  const [updateReady, setUpdateReady] = useState(false);
 
 
   // The displayed list — strictly filtered by the active channel,
@@ -240,62 +241,60 @@ export function AutoUpdate() {
     return window.callerflash.updater.onStatus((status) => {
       if (status.status === 'downloading') {
         setPhase('downloading');
-        setUpdateInfo({ isDownloading: true, downloadProgress: status.progress || 0 });
+        setUpdateInfo({ isDownloading: true });
+        setUpdateReady(true);
+      } else if (status.status === 'ready') {
+        // Download complete — ready to install
+        setPhase('idle');
+        setUpdateInfo({ isDownloading: false, isInstalling: false, updateAvailable: true });
+        setUpdateReady(true);
       } else if (status.status === 'installing') {
         setPhase('installing');
-        setUpdateInfo({ isDownloading: false, isInstalling: true, downloadProgress: 100 });
+        setUpdateInfo({ isDownloading: false, isInstalling: true });
       } else if (status.status === 'success') {
         setPhase('idle');
-        setUpdateInfo({ isDownloading: false, isInstalling: false, downloadProgress: 100 });
-        addDiagnosticLog({ level: 'success', category: 'UPDATE', message: status.message || 'Update installed successfully.' });
+        setUpdateInfo({ isDownloading: false, isInstalling: false });
       } else if (status.status === 'error') {
         setPhase('idle');
         setUpdateInfo({ isDownloading: false, isInstalling: false });
-        addDiagnosticLog({ level: 'error', category: 'UPDATE', message: `Install failed: ${status.message}` });
+        setUpdateReady(false);
+        addDiagnosticLog({ level: 'error', category: 'UPDATE', message: `Update failed: ${status.message}` });
       }
     });
   }, [addDiagnosticLog]);
 
+  // Listen for download progress (percentage)
+  useEffect(() => {
+    if (!window.callerflash?.updater?.onProgress) return;
+    return window.callerflash.updater.onProgress((data) => {
+      if (data.percent != null) {
+        setUpdateInfo({ downloadProgress: data.percent });
+      }
+    });
+  }, []);
+
   // Background update check — fired by the main process on every app
-  // launch (respecting the user's frequency preference). Runs silently
-  // without changing the current phase or switching tabs. Only updates
-  // the tray indicator if an update is found.
+  // launch. Auto-downloads if update found.
   useEffect(() => {
     if (!window.callerflash?.updater?.onBackgroundCheck) return;
-    return window.callerflash.updater.onBackgroundCheck(async ({ repo, channel }) => {
+    return window.callerflash.updater.onBackgroundCheck(async ({ channel }) => {
       try {
-        const apiUrl = `https://api.github.com/repos/${repo}/releases?per_page=20`;
-        const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 10_000);
-        const resp = await fetch(apiUrl, {
-          headers: { Accept: 'application/vnd.github+json' },
-          signal: controller.signal,
-        });
-        clearTimeout(tid);
-        if (!resp.ok) return;
-        const releases = await resp.json();
-        // Pick the latest release matching the channel.
-        const candidate = (releases as GithubRelease[]).find((r) => {
-          if (channel === 'stable') return !r.prerelease;
-          if (channel === 'beta') return r.prerelease && /beta/i.test(r.tag_name);
-          return true; // nightly — take the latest
-        }) || releases[0];
-        if (!candidate) return;
-        const tagVer = formatVersion(candidate.tag_name);
-        const curVer = formatVersion(updateInfo.currentVersion);
-        // Simple "is it different?" check — the full verification runs
-        // only when the user opens the Updates tab.
-        if (tagVer && tagVer !== curVer) {
+        if (!window.callerflash?.updater?.check) return;
+        const result = await window.callerflash.updater.check();
+        if (result?.version) {
           setUpdateInfo({
-            latestVersion: tagVer,
+            latestVersion: result.version,
             updateAvailable: true,
-            releasePageUrl: candidate.html_url,
             lastChecked: new Date(),
           });
+          // Auto-download in background
+          if (window.callerflash?.updater?.download) {
+            window.callerflash.updater.download(channel, result.version);
+          }
           addDiagnosticLog({
             level: 'info',
             category: 'UPDATE',
-            message: `Background check: update available (${tagVer})`,
+            message: `Background check: update found (${result.friendlyName || result.version}), downloading…`,
           });
         } else {
           setUpdateInfo({ lastChecked: new Date() });
@@ -333,198 +332,57 @@ export function AutoUpdate() {
     setVerification(null);
     setVerifiedArtifact(null);
     setOutcome(null);
+    setUpdateReady(false);
     addDiagnosticLog({
       level: 'info',
       category: 'UPDATE',
-      message: 'Checking GitHub releases for updates…',
-      details: `Repository: ${updateInfo.githubRepo}\nChannel: ${updateInfo.updateChannel}`,
+      message: 'Checking GitHub for updates…',
     });
 
-    try {
-      // 1. Fetch latest matching release from GitHub.
-      const repoPath = updateInfo.githubRepo.replace(/^https?:\/\/github\.com\//, '');
-      const apiUrl = `https://api.github.com/repos/${repoPath}/releases?per_page=20`;
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10_000);
-
-      let fetched: GithubRelease[];
-      try {
-        const response = await fetch(apiUrl, {
-          headers: { Accept: 'application/vnd.github+json' },
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error(`GitHub API responded ${response.status}`);
-        fetched = await response.json();
-      } finally {
-        clearTimeout(timeoutId);
-      }
-
-      setReleases(fetched);
-
-      // 2. Pick the HIGHEST version on the active channel.
-      const channel = updateInfo.updateChannel;
-      const channelFiltered = fetched
-        .filter((r) => matchesChannel(r, channel))
-        .sort((a, b) => compareVersions(
-          formatVersion(b.tag_name),
-          formatVersion(a.tag_name),
-        ));
-      const candidate = channelFiltered[0] ?? null;
-
-      if (!candidate) {
-        const msg = `No releases on the ${channel} channel yet.`;
-        addDiagnosticLog({ level: 'info', category: 'UPDATE', message: msg });
-        setUpdateInfo({
-          updateAvailable: false,
-          lastChecked: new Date(),
-          latestVersion: updateInfo.currentVersion,
-        });
-        setPhase('idle');
-        setOutcome({ kind: 'no-update', message: msg });
-        return;
-      }
-
-      const candidateVersion = formatVersion(candidate.tag_name);
-      let isHigher = compareVersions(candidateVersion, updateInfo.currentVersion) > 0;
-
-      // Same-day nightly push: if versions match exactly, check if the remote
-      // release was published >30 mins after this exact build was compiled.
-      if (!isHigher && channel === 'nightly' && compareVersions(candidateVersion, updateInfo.currentVersion) === 0) {
-        const publishTime = new Date(candidate.published_at).getTime();
-        // Give the CI 30 mins to run `vite build` + electron-builder + upload to GitHub, 
-        // to prevent immediate false positive loops.
-        if (publishTime > __APP_BUILD_TIMESTAMP__ + 30 * 60 * 1000) {
-          isHigher = true;
-          addDiagnosticLog({
-            level: 'info',
-            category: 'UPDATE',
-            message: `Nightly timestamp check: remote release published later than local build.`,
-          });
-        }
-      }
-
-      // Track the release page for the "Open on GitHub" fallback button.
-      setUpdateInfo({ releasePageUrl: candidate.html_url });
-
-      // If the highest release on this channel is NOT higher than
-      // current, the user is already up to date.
-      if (!isHigher) {
-        addDiagnosticLog({
-          level: 'success',
-          category: 'UPDATE',
-          message: `Already on the latest ${channel} version (v${updateInfo.currentVersion}).`,
-        });
-        setUpdateInfo({
-          updateAvailable: false,
-          lastChecked: new Date(),
-          latestVersion: updateInfo.currentVersion,
-        });
-        setPhase('idle');
-        setOutcome({
-          kind: 'no-update',
-          message: `You're running v${updateInfo.currentVersion}, which is the latest on the ${channel} channel.`,
-        });
-        return;
-      }
-
-      const artifact = await parseGithubRelease(candidate);
-      if (!artifact) {
-        // Release exists on GitHub but doesn't carry the in-app-update
-        // assets (signed .exe, SHA256SUMS, .sig). This is the expected
-        // case for releases uploaded manually — fall back gracefully:
-        // surface the version so the user knows they're behind, and
-        // provide a one-click "Open on GitHub" to download manually.
-        const tagVer = candidate.tag_name.replace(/^v/, '');
+    // Use Electron main process to check + auto-download
+    if (window.callerflash?.updater?.check) {
+      const result = await window.callerflash.updater.check();
+      if (result?.version) {
+        setUpdateInfo({ latestVersion: result.version, updateAvailable: true });
         addDiagnosticLog({
           level: 'info',
           category: 'UPDATE',
-          message: `v${tagVer} on ${updateInfo.updateChannel} channel — manual download only (no signed assets in this release)`,
+          message: `Update found: ${result.friendlyName || result.version}. Downloading in background…`,
         });
-        setUpdateInfo({
-          updateAvailable: true,
-          latestVersion: tagVer,
-          lastChecked: new Date(),
-          releasePageUrl: candidate.html_url,
-        });
+        // Auto-download in background
+        if (window.callerflash?.updater?.download) {
+          window.callerflash.updater.download(updateInfo.updateChannel, result.version);
+        }
         setPhase('idle');
-        setOutcome({
-          kind: 'missing-assets',
-          message: `v${tagVer} is available on the ${updateInfo.updateChannel} channel. Open it on GitHub to download — this release isn't published by the automated workflow so it doesn't carry signed in-app-update assets.`,
-          release: candidate,
-        });
-        return;
-      }
-
-      // 3. Run the full verification pipeline.
-      addDiagnosticLog({
-        level: 'info',
-        category: 'UPDATE',
-        message: `Verifying release v${artifact.version} against pinned public key…`,
-      });
-      const result = await verifyUpdateArtifact(artifact, channel, updateInfo.currentVersion);
-      setVerification(result);
-      for (const step of result.steps) {
-        addDiagnosticLog({
-          level: step.passed ? 'success' : 'error',
-          category: 'UPDATE',
-          message: `Verification: ${step.name} — ${step.passed ? 'PASS' : 'FAIL'}`,
-          details: step.detail,
-        });
-      }
-
-      if (!result.approved) {
-        const msg = `Update ${formatVersion(artifact.version)} REJECTED by verification — refusing to install. See the verification panel below for the failing step.`;
-        addDiagnosticLog({ level: 'error', category: 'UPDATE', message: msg });
-        setUpdateInfo({
-          updateAvailable: false,
-          lastChecked: new Date(),
-          latestVersion: updateInfo.currentVersion,
-        });
+      } else if (result?.upToDate) {
+        setOutcome({ kind: 'no-update', message: `You're running the latest version (${formatVersion(updateInfo.currentVersion)}).` });
+        setUpdateInfo({ updateAvailable: false, lastChecked: new Date() });
         setPhase('idle');
-        setOutcome({ kind: 'verification-failed', message: msg, release: candidate });
-        return;
-      }
-
-      addDiagnosticLog({
-        level: 'success',
-        category: 'UPDATE',
-        message: `Update ${formatVersion(artifact.version)} verified — ${updateInfo.autoDownload ? 'auto-downloading' : 'waiting for user to click Download'}`,
-      });
-
-      // Update store state so the UI reflects the verified version.
-      setArtifactUrl(artifact.downloadUrl);
-      setVerifiedArtifact(artifact);
-      setUpdateInfo({
-        latestVersion: artifact.version,
-        updateAvailable: true,
-        lastChecked: new Date(),
-        releaseNotes: artifact.notes || 'See GitHub for release notes.',
-      });
-
-      // If auto-download is enabled, download immediately so the
-      // update is ready to install. Either way, the Install button
-      // is always visible in the update banner.
-      if (updateInfo.autoDownload) {
-        await runDownload({ version: artifact.version, downloadUrl: artifact.downloadUrl });
-      } else {
+      } else if (result?.error) {
+        setOutcome({ kind: 'verification-failed', message: result.error });
         setPhase('idle');
       }
-
-      // Notify via system tray / OS notification (Electron-only; no-op in web demo).
-      try {
-        await window.callerflash?.notify?.show?.(
-          `v${artifact.version} available`,
-          'Click the Updates tab to download and install.'
-        );
-      } catch {
-        // Ignore — web demo has no notification backend.
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown';
-      addDiagnosticLog({ level: 'error', category: 'UPDATE', message: `Update check failed: ${message}` });
-      setPhase('idle');
+      return;
     }
+
+    // Web fallback
+    try {
+      const repoPath = updateInfo.githubRepo.replace(/^https?:\/\/github\.com\//, '');
+      const resp = await fetch(`https://api.github.com/repos/${repoPath}/releases/latest`, {
+        headers: { Accept: 'application/vnd.github+json' },
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const latest = data.tag_name.replace(/^v/, '');
+      if (latest && latest !== updateInfo.currentVersion) {
+        setUpdateInfo({ latestVersion: latest, updateAvailable: true, releasePageUrl: data.html_url });
+      } else {
+        setOutcome({ kind: 'no-update', message: 'You are running the latest version.' });
+      }
+    } catch {
+      setOutcome({ kind: 'verification-failed', message: 'Could not check for updates.' });
+    }
+    setPhase('idle');
   };
 
   /**
@@ -597,26 +455,22 @@ export function AutoUpdate() {
    * The main process handles everything — shows the Discord-style
    * progress window, downloads, verifies, runs NSIS, relaunches.
    */
-  const handleInstall = async () => {
-    if (phase === 'installing' || phase === 'downloading') return;
+  const handleInstall = () => {
+    if (phase === 'installing') return;
+    if (!updateInfo.latestVersion) return;
 
     addDiagnosticLog({
       level: 'info',
       category: 'UPDATE',
-      message: `Starting update ${formatVersion(updateInfo.latestVersion)}…`,
+      message: `Installing update ${formatVersion(updateInfo.latestVersion)}…`,
     });
 
-    // Electron: tell main process to start download + install.
-    // The main process will show the progress window.
+    // Electron: tell main process to run the installer
     if (window.callerflash?.updater?.install) {
-      window.callerflash.updater.install();
-      setPhase('downloading');
-      setUpdateInfo({ isDownloading: true });
-      return;
+      window.callerflash.updater.install(updateInfo.latestVersion);
+      setPhase('installing');
+      setUpdateInfo({ isInstalling: true });
     }
-
-    // Web fallback: not supported (electron-updater is desktop-only).
-    addDiagnosticLog({ level: 'warning', category: 'UPDATE', message: 'In-app updates require the desktop app.' });
   };
 
   const openUrl = (url: string) => {
@@ -718,20 +572,50 @@ export function AutoUpdate() {
               Update available: {formatVersion(updateInfo.latestVersion)}
             </p>
             <p className="text-[11px] text-win-text-secondary mt-0.5">
-              {`Newer than your current ${formatVersion(updateInfo.currentVersion)} on the ${updateInfo.updateChannel} channel.`}
+              {phase === 'downloading'
+                ? `Downloading… ${Math.round(updateInfo.downloadProgress || 0)}%`
+                : phase === 'installing'
+                ? 'Installing…'
+                : updateReady
+                ? 'Downloaded and ready to install.'
+                : `Newer than your current ${formatVersion(updateInfo.currentVersion)} on the ${updateInfo.updateChannel} channel.`}
             </p>
+            {phase === 'downloading' && (
+              <div className="mt-1.5 w-full h-1.5 bg-black/20 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-amber-400 rounded-full transition-all duration-300"
+                  style={{ width: `${updateInfo.downloadProgress || 0}%` }}
+                />
+              </div>
+            )}
           </div>
           <div className="flex-shrink-0">
-            <button
-              onClick={handleInstall}
-              disabled={isBusy}
-              className="flex items-center gap-2 px-4 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-            >
-              <Download className={`w-4 h-4 ${phase === 'downloading' || phase === 'installing' ? 'animate-spin' : ''}`} />
-              {phase === 'downloading' ? 'Downloading…'
-                : phase === 'installing' ? 'Installing…'
-                : 'Update Now'}
-            </button>
+            {updateReady && phase !== 'installing' ? (
+              <button
+                onClick={handleInstall}
+                className="flex items-center gap-2 px-4 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Install
+              </button>
+            ) : (
+              <button
+                disabled
+                className="flex items-center gap-2 px-4 py-2 bg-win-card text-win-text-secondary rounded-lg text-sm font-medium cursor-not-allowed opacity-70"
+              >
+                {phase === 'installing' ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-win-text-secondary border-t-transparent rounded-full animate-spin" />
+                    Installing…
+                  </>
+                ) : (
+                  <>
+                    <div className="w-4 h-4 border-2 border-win-text-secondary border-t-transparent rounded-full animate-spin" />
+                    Downloading…
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       )}
