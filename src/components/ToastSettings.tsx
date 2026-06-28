@@ -140,7 +140,7 @@ export function ToastSettings() {
             </div>
             <p className="text-[11px] text-win-text-tertiary leading-snug mt-1">
               {toastConfig.style === 'custom'
-                ? 'Branded window always-on-top with progress bar, caller name, and auto-copy. Native notification also fires as backup.'
+                ? 'Branded always-on-top window with progress bar, caller name, timestamp, and auto-copy to clipboard.'
                 : 'Uses your operating system\'s notification system. Reliable when app is minimized or backgrounded.'}
             </p>
           </div>

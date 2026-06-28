@@ -57,15 +57,15 @@ function showSeparateToast(data: {
     return;
   }
 
-  // ── Custom style: dedicated branded toast window ───────────────
-  // First, fire a native notification as a backup (user might miss the window)
-  if (window.callerflash?.notify?.show) {
-    window.callerflash.notify.show('Incoming Call', `${data.callerNumber}${data.callerName ? ` - ${data.callerName}` : ''}`);
-  }
-
+  // ── Custom style: dedicated branded toast window only ──────────
   if (window.callerflash?.toast?.show) {
     window.callerflash.toast.show(data);
     return;
+  }
+
+  // ── Fallback when toast bridge unavailable: native notification ──
+  if (window.callerflash?.notify?.show) {
+    window.callerflash.notify.show('Incoming Call', `${data.callerNumber}${data.callerName ? ` - ${data.callerName}` : ''}`);
   }
 
   // ── Web fallback: popup window ──────────────────────────────────
