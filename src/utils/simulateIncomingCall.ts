@@ -40,26 +40,37 @@ function showSeparateToast(data: {
     showCallerName: boolean;
     showTimestamp: boolean;
     maxWidth: number;
+    style: 'native' | 'custom';
   };
 }) {
-  // ── Electron: use the dedicated toast BrowserWindow via IPC ────
-  if (typeof window !== 'undefined') {
-    // We always trigger a native OS notification as a reliable fallback
-    // that works flawlessly on Windows/Linux even when backgrounded.
+  const c = data.config;
+
+  // ── Native style: OS-level notification only ────────────────────
+  if (c.style === 'native') {
     if (window.callerflash?.notify?.show) {
       window.callerflash.notify.show('Incoming Call', `${data.callerNumber}${data.callerName ? ` - ${data.callerName}` : ''}`);
     }
-    
-    if (window.callerflash?.toast?.show) {
-      window.callerflash.toast.show(data);
-      return;
+    // Auto-copy to clipboard if enabled
+    if (c.autoCopyToClipboard && data.callerNumber && navigator.clipboard) {
+      navigator.clipboard.writeText(data.callerNumber).catch(() => {});
     }
+    return;
   }
 
-  // ── Web: open a real popup window ─────────────────────────────
+  // ── Custom style: dedicated branded toast window ───────────────
+  // First, fire a native notification as a backup (user might miss the window)
+  if (window.callerflash?.notify?.show) {
+    window.callerflash.notify.show('Incoming Call', `${data.callerNumber}${data.callerName ? ` - ${data.callerName}` : ''}`);
+  }
+
+  if (window.callerflash?.toast?.show) {
+    window.callerflash.toast.show(data);
+    return;
+  }
+
+  // ── Web fallback: popup window ──────────────────────────────────
   if (typeof window === 'undefined') return;
 
-  const c = data.config;
   const ts = new Date(data.timestamp).toLocaleTimeString();
   const durationMs = c.duration * 1000;
   const popupWidth = Math.min(c.maxWidth, 440);

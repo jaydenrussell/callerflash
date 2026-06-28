@@ -1,5 +1,5 @@
 import {
-  Palette, RotateCcw,
+  Palette, RotateCcw, Bell,
   Clock, PhoneIncoming, Undo2
 } from 'lucide-react';
 import { useAppStore, type ToastConfig } from '../store/useAppStore';
@@ -45,6 +45,7 @@ export function ToastSettings() {
       maxWidth: 420,
       borderRadius: 12,
       opacity: 95,
+      style: 'custom',
     });
     setToastDragPosition(null);
     addDiagnosticLog({
@@ -59,7 +60,11 @@ export function ToastSettings() {
   // frameless toast window; in the web demo it renders in-app.
   const handlePreview = () => {
     simulateIncomingCall('toast-settings');
-    addDiagnosticLog({ level: 'info', category: 'TOAST', message: 'Toast preview fired' });
+    addDiagnosticLog({
+      level: 'info',
+      category: 'TOAST',
+      message: toastConfig.style === 'native' ? 'Native notification preview fired' : 'Branded toast preview fired',
+    });
   };
 
   return (
@@ -77,7 +82,7 @@ export function ToastSettings() {
             className="flex items-center gap-2 px-3 py-1.5 bg-win-accent/15 hover:bg-win-accent/25 text-win-accent rounded-lg text-sm font-medium transition-colors border border-win-accent/20"
           >
             <PhoneIncoming className="w-3.5 h-3.5" />
-            Test Toast
+            {toastConfig.style === 'native' ? 'Test Native' : 'Test Toast'}
           </button>
           <button
             onClick={handleReset}
@@ -90,6 +95,57 @@ export function ToastSettings() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* Notification Style */}
+        <Section icon={<Bell className="w-4 h-4" />} title="Notification style" desc="How incoming call alerts appear">
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => update({ style: 'custom' })}
+                className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border transition-all ${
+                  toastConfig.style === 'custom'
+                    ? 'bg-win-accent/15 border-win-accent/40 text-win-accent'
+                    : 'bg-win-card border-win-border/50 text-win-text-secondary hover:border-win-border hover:bg-win-surface-hover'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-win-accent/30 to-blue-500/20 flex items-center justify-center">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2"/>
+                    <path d="M8 21h8"/>
+                    <path d="M12 17v4"/>
+                    <circle cx="12" cy="10" r="3" fill="currentColor" stroke="none"/>
+                  </svg>
+                </div>
+                <span className="text-xs font-semibold">Branded</span>
+                <span className="text-[10px] text-center leading-tight opacity-70">Custom window with progress bar and caller details</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => update({ style: 'native' })}
+                className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border transition-all ${
+                  toastConfig.style === 'native'
+                    ? 'bg-win-accent/15 border-win-accent/40 text-win-accent'
+                    : 'bg-win-card border-win-border/50 text-win-text-secondary hover:border-win-border hover:bg-win-surface-hover'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                  </svg>
+                </div>
+                <span className="text-xs font-semibold">Native</span>
+                <span className="text-[10px] text-center leading-tight opacity-70">OS-level notification, works reliably in background</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-win-text-tertiary leading-snug mt-1">
+              {toastConfig.style === 'custom'
+                ? 'Branded window always-on-top with progress bar, caller name, and auto-copy. Native notification also fires as backup.'
+                : 'Uses your operating system\'s notification system. Reliable when app is minimized or backgrounded.'}
+            </p>
+          </div>
+        </Section>
+
         {/* Appearance & Behavior */}
         <Section icon={<Palette className="w-4 h-4" />} title="Appearance & Behavior" desc="Look, feel, and features">
           <div className="space-y-3">

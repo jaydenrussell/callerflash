@@ -30,6 +30,7 @@ export interface ToastConfig {
   maxWidth: number;
   borderRadius: number;
   opacity: number;
+  style: 'native' | 'custom';
 }
 
 export interface AppPreferences {
@@ -201,6 +202,7 @@ const defaultToastConfig: ToastConfig = {
   maxWidth: 420,
   borderRadius: 12,
   opacity: 95,
+  style: 'custom',
   ...(persistedUi.toastConfig ?? {}),
 };
 
