@@ -61,6 +61,7 @@ function buildUpdaterHtml(iconDataUrl) {
       font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
       color: var(--text);
       overflow: hidden;
+      -webkit-app-region: drag;
     }
     .frame {
       width: 340px; height: 480px;
@@ -75,7 +76,18 @@ function buildUpdaterHtml(iconDataUrl) {
       position: absolute;
       top: 50%; left: 50%;
       transform: translate(-50%, -50%);
+      -webkit-app-region: no-drag;
     }
+    .drag-handle {
+      position: absolute;
+      top: 8px; left: 50%;
+      transform: translateX(-50%);
+      width: 36px; height: 5px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.15);
+      cursor: grab;
+    }
+    .drag-handle:active { cursor: grabbing; }
     .logo {
       width: 64px; height: 64px;
       border-radius: 18px;
@@ -174,12 +186,33 @@ function buildUpdaterHtml(iconDataUrl) {
     }
 
     /* ── States ─────────────────────────────────────────────────── */
-    .status.success { color: var(--success); }
-    .status.error { color: var(--error); }
+    .status-text.success { color: var(--success); }
+    .status-text.error { color: var(--error); }
+
+    /* ── Dismiss button (shown on error) ─────────────────────────── */
+    .dismiss-btn {
+      margin-top: 16px;
+      padding: 8px 20px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text-dim);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      -webkit-app-region: no-drag;
+      display: none;
+    }
+    .dismiss-btn:hover {
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+    }
+    .dismiss-btn.visible { display: inline-block; }
   </style>
 </head>
 <body>
   <div class="frame">
+    <div class="drag-handle" id="dragHandle"></div>
     <div class="logo"><img src="${safeIcon}" alt="CallerFlash" /></div>
 
     <div class="progress-ring">
@@ -200,9 +233,10 @@ function buildUpdaterHtml(iconDataUrl) {
       </div>
     </div>
 
-    <div class="status" id="status">Preparing…</div>
+    <div class="status-text" id="status"></div>
     <div class="detail" id="detail"></div>
     <div class="size-info" id="size"></div>
+    <button class="dismiss-btn" id="dismissBtn">Dismiss</button>
     <div class="version-badge" id="version">v${app.getVersion()}</div>
   </div>
   <script>
@@ -241,6 +275,14 @@ function buildUpdaterHtml(iconDataUrl) {
     function setDetail(text) { detail.textContent = text || ''; }
     function setSize(text) { sizeEl.textContent = text || ''; }
     function setVersion(text) { versionEl.textContent = text; }
+    function showDismiss() {
+      document.getElementById('dismissBtn').classList.add('visible');
+    }
+
+    // Dismiss button closes the window
+    document.getElementById('dismissBtn').addEventListener('click', function() {
+      window.close();
+    });
 
     // Event listeners from main process
     window.callerflashUpdater?.onProgress?.(function(data) {
@@ -274,6 +316,7 @@ function buildUpdaterHtml(iconDataUrl) {
         setStatus('Update failed', 'error');
         setDetail(data.message || 'An error occurred');
         label.textContent = 'Error';
+        showDismiss();
       } else if (data.status === 'checking') {
         setStatus('Checking for updates', '');
         setDetail('Contacting GitHub…');
@@ -293,13 +336,19 @@ function buildUpdaterHtml(iconDataUrl) {
 function createUpdaterWindow(mainWindow) {
   if (updaterWindow && !updaterWindow.isDestroyed()) return updaterWindow;
 
-  // Center on main window position
+  // Position: centered on the main CallerFlash window, slightly offset
+  // so it appears "attached" to the app rather than floating randomly.
   let posX = null, posY = null;
   if (mainWindow && !mainWindow.isDestroyed()) {
     const [x, y] = mainWindow.getPosition();
     const [w, h] = mainWindow.getSize();
+    // Center horizontally on main window, place in upper-middle area
     posX = Math.round(x + (w / 2) - 170);
-    posY = Math.round(y + (h / 2) - 240);
+    posY = Math.round(y + (h * 0.25) - 240);
+    // Clamp to visible screen area
+    const { width: screenW, height: screenH } = require('electron').screen.getPrimaryDisplay().workAreaSize;
+    posX = Math.max(0, Math.min(posX, screenW - 340));
+    posY = Math.max(0, Math.min(posY, screenH - 480));
   }
 
   updaterWindow = new BrowserWindow({
@@ -340,6 +389,9 @@ function createUpdaterWindow(mainWindow) {
   updaterWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildUpdaterHtml(loadAppIconDataURL()))}`);
   updaterWindow.once('ready-to-show', () => {
     updaterWindow.show();
+    // Bring to front on top of all windows
+    updaterWindow.setAlwaysOnTop(true, 'screen-saver');
+    updaterWindow.focus();
     updaterWindow.webContents.send('updater:version', {
       current: 'v' + app.getVersion(),
       latest: '…',
@@ -430,15 +482,26 @@ function downloadAndInstall(mainWindow) {
 
   autoUpdater.once('error', (err) => {
     autoUpdater.removeListener('download-progress', progressHandler);
-    console.error('[updater] error:', err.message);
-    sendUpdaterStatus({ status: 'error', message: err.message || 'Download failed' });
+    console.error('[updater] error:', err.message, err.stack);
+    // Provide user-friendly error messages
+    let message = err.message || 'Unknown error';
+    if (message.includes('latest.yml') || message.includes('No published')) {
+      message = 'No update found. The release may be missing update files.';
+    } else if (message.includes('404') || message.includes('Not Found')) {
+      message = 'Update file not found on GitHub. The release may be incomplete.';
+    } else if (message.includes('ECONNREFUSED') || message.includes('ETIMEDOUT') || message.includes('network')) {
+      message = 'Network error. Check your internet connection.';
+    } else if (message.includes('signature') || message.includes('checksum')) {
+      message = 'Verification failed. The update file may be corrupted.';
+    }
+    sendUpdaterStatus({ status: 'error', message });
     updaterCanClose = true;
     setTimeout(() => {
       if (updaterWindow && !updaterWindow.isDestroyed()) {
         updaterWindow.close();
         updaterWindow = null;
       }
-    }, 5000);
+    }, 8000);
   });
 
   // Safety timeout: if no progress after 10s, show error
@@ -469,14 +532,18 @@ function downloadAndInstall(mainWindow) {
       clearTimeout(safetyTimeout);
       autoUpdater.removeListener('download-progress', progressHandler);
       console.error('[updater] downloadUpdate failed:', err.message);
-      sendUpdaterStatus({ status: 'error', message: err.message || 'Download failed' });
+      let message = err.message || 'Download failed';
+      if (message.includes('latest.yml')) {
+        message = 'No update manifest found. The GitHub release may be missing latest.yml.';
+      }
+      sendUpdaterStatus({ status: 'error', message });
       updaterCanClose = true;
       setTimeout(() => {
         if (updaterWindow && !updaterWindow.isDestroyed()) {
           updaterWindow.close();
           updaterWindow = null;
         }
-      }, 5000);
+      }, 8000);
     });
 }
 
