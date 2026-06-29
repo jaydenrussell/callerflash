@@ -193,8 +193,7 @@ export function simulateIncomingCall(source: 'dashboard' | 'toast-settings' | 'b
       );
     }
   } else {
-    // Custom/Branded style: in-app toast + always-on-top branded window
-    store.addToast(record);
+    // Custom/Branded style: always-on-top inline HTML window
     if (window.callerflash?.toast?.show) {
       window.callerflash.toast.show({
         id: record.id,

@@ -148,16 +148,8 @@ async function checkForUpdates(channel) {
 
   log('found:', version, 'published:', releaseDate.toISOString(), 'current:', currentVersion);
 
-  // Compare by release date for non-stable channels
-  if (channel !== 'stable') {
-    let buildTime = Date.now();
-    try { buildTime = fs.statSync(process.execPath).mtimeMs; } catch {}
-
-    if (releaseDate.getTime() <= buildTime) {
-      log('release is same or older than current build → up to date');
-      return { upToDate: true, version: currentVersion };
-    }
-  } else {
+  // Compare versions
+  if (channel === 'stable') {
     // Stable: simple semver compare
     const remote = version.replace(/[-+].*/, '').split('.').map(Number);
     const local = currentVersion.replace(/[-+].*/, '').split('.').map(Number);
@@ -168,6 +160,22 @@ async function checkForUpdates(channel) {
       if (r < l) break;
     }
     if (!newer) return { upToDate: true, version: currentVersion };
+  } else {
+    // Beta/Nightly: in dev mode always offer update; in packaged mode compare dates
+    const isDev = process.execPath.includes('electron') || process.execPath.includes('node');
+    if (!isDev) {
+      // Packaged: compare release date vs exe mtime
+      let buildTime = Date.now();
+      try { buildTime = fs.statSync(process.execPath).mtimeMs; } catch {}
+      if (releaseDate.getTime() <= buildTime) {
+        log('release is same or older than current build → up to date');
+        return { upToDate: true, version: currentVersion };
+      }
+    }
+    // Dev mode or newer release: check if version strings are identical
+    if (version === currentVersion) {
+      return { upToDate: true, version: currentVersion };
+    }
   }
 
   const downloadUrl = getExeUrl(release);

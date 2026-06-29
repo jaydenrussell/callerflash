@@ -473,10 +473,9 @@ function createToastWindow() {
     hasShadow: false,
     paintWhenInitiallyHidden: true,
     webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: true,
+      contextIsolation: false,
+      sandbox: false,
     },
   };
   // Only pass x/y when we actually have a saved position; otherwise
@@ -493,11 +492,8 @@ function createToastWindow() {
   }
   toastWindow = new BrowserWindow(opts);
 
-  // The renderer detects ?toast=1 and renders the dedicated ToastWindow
-  // component instead of the main app shell.
-  toastWindow.loadFile(path.join(__dirname, '../dist/index.html'), {
-    search: 'toast=1',
-  });
+  // Load inline HTML directly — lightweight, always works, no React app needed
+  toastWindow.loadURL(`data:text/html;charset=utf-8,${getToastHtml()}`);
 
   toastWindow.setMenuBarVisibility(false);
   toastWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -520,6 +516,46 @@ function createToastWindow() {
   toastWindow.on('move', saveToastState);
 
   return toastWindow;
+}
+
+// ── Inline HTML for branded toast notification ─────────────────────────
+function getToastHtml() {
+  return encodeURIComponent('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>' +
+    '*{margin:0;padding:0;box-sizing:border-box}' +
+    'html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-family:\'Segoe UI\',system-ui,sans-serif}' +
+    '.toast{width:100%;height:100%;background:#1a1a2e;border-radius:16px;border:1px solid rgba(96,205,255,0.2);box-shadow:0 12px 40px rgba(0,0,0,0.6);overflow:hidden;position:relative;animation:slideIn .35s cubic-bezier(.16,1,.3,1) forwards}' +
+    '@keyframes slideIn{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}' +
+    '.accent{position:absolute;top:0;left:0;width:4px;height:100%;background:#60cdff}' +
+    '.body{padding:14px 16px 14px 20px;display:flex;gap:12px;height:100%}' +
+    '.icon{width:40px;height:40px;border-radius:50%;background:rgba(96,205,255,0.15);display:grid;place-items:center;flex-shrink:0}' +
+    '.info{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}' +
+    '.title{font-size:12px;font-weight:600;color:#60cdff;margin-bottom:4px}' +
+    '.number{font-size:18px;font-weight:700;color:#fff;letter-spacing:.5px}' +
+    '.name{font-size:12px;color:rgba(255,255,255,0.6);margin-top:2px}' +
+    '.time{font-size:10px;color:rgba(255,255,255,0.35);margin-top:4px}' +
+    '.progress{position:absolute;bottom:0;left:0;width:100%;height:3px;background:rgba(96,205,255,0.1)}' +
+    '.progress-bar{height:100%;width:100%;background:#60cdff;transition:width 100ms linear}' +
+    '</style></head><body>' +
+    '<div class="toast">' +
+    '<div class="accent"></div>' +
+    '<div class="body">' +
+    '<div class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60cdff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div>' +
+    '<div class="info">' +
+    '<div class="title" id="title">Incoming Call</div>' +
+    '<div class="number" id="number"></div>' +
+    '<div class="name" id="name"></div>' +
+    '<div class="time" id="time"></div>' +
+    '</div></div>' +
+    '<div class="progress"><div class="progress-bar" id="progress"></div></div>' +
+    '</div>' +
+    '<script>var duration=8000,start=Date.now();function update(){var r=Math.max(0,duration-(Date.now()-start));document.getElementById("progress").style.width=(r/duration*100)+"%";if(r>0)requestAnimationFrame(update)}update();setTimeout(function(){window.close()},duration+500);' +
+    'try{var ipc=require("electron").ipcRenderer;ipc.on("toast:show-event",function(e,d){' +
+    'if(d.callerNumber)document.getElementById("number").textContent=d.callerNumber;' +
+    'if(d.callerName)document.getElementById("name").textContent=d.callerName;' +
+    'if(d.timestamp)document.getElementById("time").textContent=new Date(d.timestamp).toLocaleTimeString();' +
+    'if(d.config&&d.config.duration){duration=d.config.duration*1000;start=Date.now();}' +
+    '})}catch(err){}</script>' +
+    '</body></html>');
 }
 
 ipcMain.on('toast:show', (_event, data) => {
