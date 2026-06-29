@@ -488,14 +488,13 @@ function createToastWindow() {
 
 ipcMain.on('toast:show', (_event, data) => {
   const win = createToastWindow();
-  // Always re-show — even if previously hidden, the toast window
-  // must come back every time a new call comes in.
-  if (!win.isVisible()) win.show();
+  // Always re-show and focus — the toast must be visible.
+  win.show();
+  win.focus();
+  win.setAlwaysOnTop(true, 'screen-saver');
   if (toastRendererReady) {
     win.webContents.send('toast:show:event', data);
   } else {
-    // Renderer still loading (first toast after app launch is the
-    // typical case) — buffer until `did-finish-load` fires.
     pendingToasts.push(data);
   }
 });

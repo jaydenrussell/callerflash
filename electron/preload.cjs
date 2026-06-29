@@ -76,7 +76,7 @@ contextBridge.exposeInMainWorld('callerflash', {
 
   // ── Auto-updater (custom) ────────────────────────────────────────
   updater: {
-    check: () => ipcRenderer.invoke('updater:check'),
+    check: (channel) => ipcRenderer.invoke('updater:check', channel),
     download: (channel, version, downloadUrl) => ipcRenderer.send('updater:download', { channel, version, downloadUrl }),
     install: (version) => ipcRenderer.send('updater:install', { version }),
     show: () => ipcRenderer.send('updater:show'),

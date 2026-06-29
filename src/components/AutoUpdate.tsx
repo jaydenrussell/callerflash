@@ -280,7 +280,7 @@ export function AutoUpdate() {
     return window.callerflash.updater.onBackgroundCheck(async ({ channel }) => {
       try {
         if (!window.callerflash?.updater?.check) return;
-        const result = await window.callerflash.updater.check();
+        const result = await window.callerflash.updater.check(channel);
         if (result?.version) {
           setUpdateInfo({
             latestVersion: result.version,
@@ -341,7 +341,7 @@ export function AutoUpdate() {
 
     // Use Electron main process to check + auto-download
     if (window.callerflash?.updater?.check) {
-      const result = await window.callerflash.updater.check();
+      const result = await window.callerflash.updater.check(updateInfo.updateChannel);
       if (result?.version) {
         setUpdateInfo({ latestVersion: result.version, updateAvailable: true });
         addDiagnosticLog({
@@ -734,7 +734,17 @@ export function AutoUpdate() {
               {(['stable', 'beta', 'nightly'] as const).map((channelOpt) => (
                 <button
                   key={channelOpt}
-                  onClick={() => setUpdateInfo({ updateChannel: channelOpt })}
+                  onClick={() => {
+                    setUpdateInfo({ updateChannel: channelOpt });
+                    // Notify main process of channel change
+                    if (window.callerflash?.updater?.setChannel) {
+                      window.callerflash.updater.setChannel(channelOpt);
+                    }
+                    // Trigger immediate check with new channel
+                    setOutcome(null);
+                    setUpdateReady(false);
+                    setTimeout(() => handleCheckAndDownload(), 100);
+                  }}
                   className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
                     updateInfo.updateChannel === channelOpt
                       ? 'bg-win-accent/20 text-win-accent border border-win-accent/30'

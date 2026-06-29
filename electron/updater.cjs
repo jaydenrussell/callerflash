@@ -34,20 +34,26 @@ function manifestUrl(channel) {
 function findReleaseForChannel(releases, channel) {
   if (!Array.isArray(releases) || releases.length === 0) return null;
 
+  // Sort by publish date, newest first
   const sorted = [...releases].sort((a, b) => {
-    const dateA = new Date(a.published_at || a.created_at).getTime();
-    const dateB = new Date(b.published_at || b.created_at).getTime();
-    return dateB - dateA; // newest first
+    const dateA = new Date(a.published_at || a.created_at || 0).getTime();
+    const dateB = new Date(b.published_at || b.created_at || 0).getTime();
+    return dateB - dateA;
   });
 
   if (channel === 'stable') {
+    // Stable: latest non-prerelease, or fallback to draft=false latest
+    const stable = sorted.find((r) => !r.prerelease && !r.draft);
+    if (stable) return stable;
     return sorted.find((r) => !r.prerelease) || null;
   }
   if (channel === 'beta') {
-    return sorted.find((r) => r.prerelease && /beta/i.test(r.tag_name)) || null;
+    // Beta: tag contains "beta" (case-insensitive)
+    return sorted.find((r) => /beta/i.test(r.tag_name)) || null;
   }
+  // Nightly: tag contains "nightly" (case-insensitive), or any prerelease
   return (
-    sorted.find((r) => r.prerelease && /nightly/i.test(r.tag_name)) ||
+    sorted.find((r) => /nightly/i.test(r.tag_name)) ||
     sorted.find((r) => r.prerelease) ||
     null
   );
@@ -642,7 +648,11 @@ async function checkForUpdates(channel) {
     // Find the latest release for this channel
     const release = findReleaseForChannel(releases, channel);
     if (!release) {
-      return { error: `No releases found for ${channel} channel` };
+      const totalReleases = releases.length;
+      const prereleases = releases.filter((r) => r.prerelease).length;
+      return {
+        error: `No ${channel} release found. (${totalReleases} total releases, ${prereleases} prereleases)`,
+      };
     }
 
     const version = release.tag_name.replace(/^v/, '');
@@ -774,9 +784,11 @@ function installUpdate(version) {
 function initUpdaterIPC(mainWindow) {
   mainWindowRef = mainWindow;
 
-  // Check for updates (no download)
-  ipcMain.handle('updater:check', async () => {
-    const result = await checkForUpdates(currentChannel);
+  // Check for updates (no download) — channel passed from renderer
+  ipcMain.handle('updater:check', async (_event, channel) => {
+    const ch = channel || currentChannel || 'stable';
+    currentChannel = ch; // sync module state
+    const result = await checkForUpdates(ch);
     if (result?.version) {
       if (updaterWindow && !updaterWindow.isDestroyed()) {
         updaterWindow.webContents.send('updater:version', {
