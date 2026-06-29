@@ -289,7 +289,7 @@ export function AutoUpdate() {
           });
           // Auto-download in background
           if (window.callerflash?.updater?.download) {
-            window.callerflash.updater.download(channel, result.version);
+            window.callerflash.updater.download(channel, result.version, result.downloadUrl);
           }
           addDiagnosticLog({
             level: 'info',
@@ -349,9 +349,9 @@ export function AutoUpdate() {
           category: 'UPDATE',
           message: `Update found: ${result.friendlyName || result.version}. Downloading in background…`,
         });
-        // Auto-download in background
+        // Auto-download in background (pass the download URL from the check result)
         if (window.callerflash?.updater?.download) {
-          window.callerflash.updater.download(updateInfo.updateChannel, result.version);
+          window.callerflash.updater.download(updateInfo.updateChannel, result.version, result.downloadUrl);
         }
         setPhase('idle');
       } else if (result?.upToDate) {
@@ -465,11 +465,30 @@ export function AutoUpdate() {
       message: `Installing update ${formatVersion(updateInfo.latestVersion)}…`,
     });
 
-    // Electron: tell main process to run the installer
     if (window.callerflash?.updater?.install) {
       window.callerflash.updater.install(updateInfo.latestVersion);
       setPhase('installing');
       setUpdateInfo({ isInstalling: true });
+    }
+  };
+
+  /**
+   * Update: download the file, then install when ready.
+   */
+  const handleUpdate = () => {
+    if (phase === 'downloading' || phase === 'installing') return;
+    if (!updateInfo.latestVersion) return;
+
+    addDiagnosticLog({
+      level: 'info',
+      category: 'UPDATE',
+      message: `Downloading update ${formatVersion(updateInfo.latestVersion)}…`,
+    });
+
+    if (window.callerflash?.updater?.download) {
+      window.callerflash.updater.download(updateInfo.updateChannel, updateInfo.latestVersion);
+      setPhase('downloading');
+      setUpdateInfo({ isDownloading: true });
     }
   };
 
@@ -590,7 +609,23 @@ export function AutoUpdate() {
             )}
           </div>
           <div className="flex-shrink-0">
-            {updateReady && phase !== 'installing' ? (
+            {phase === 'installing' ? (
+              <button
+                disabled
+                className="flex items-center gap-2 px-4 py-2 bg-win-card text-win-text-secondary rounded-lg text-sm font-medium cursor-not-allowed opacity-70"
+              >
+                <div className="w-4 h-4 border-2 border-win-text-secondary border-t-transparent rounded-full animate-spin" />
+                Installing…
+              </button>
+            ) : phase === 'downloading' ? (
+              <button
+                disabled
+                className="flex items-center gap-2 px-4 py-2 bg-win-card text-win-text-secondary rounded-lg text-sm font-medium cursor-not-allowed opacity-70"
+              >
+                <div className="w-4 h-4 border-2 border-win-text-secondary border-t-transparent rounded-full animate-spin" />
+                Downloading…
+              </button>
+            ) : updateReady ? (
               <button
                 onClick={handleInstall}
                 className="flex items-center gap-2 px-4 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors"
@@ -600,20 +635,11 @@ export function AutoUpdate() {
               </button>
             ) : (
               <button
-                disabled
-                className="flex items-center gap-2 px-4 py-2 bg-win-card text-win-text-secondary rounded-lg text-sm font-medium cursor-not-allowed opacity-70"
+                onClick={handleUpdate}
+                className="flex items-center gap-2 px-4 py-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors"
               >
-                {phase === 'installing' ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-win-text-secondary border-t-transparent rounded-full animate-spin" />
-                    Installing…
-                  </>
-                ) : (
-                  <>
-                    <div className="w-4 h-4 border-2 border-win-text-secondary border-t-transparent rounded-full animate-spin" />
-                    Downloading…
-                  </>
-                )}
+                <Download className="w-4 h-4" />
+                Update
               </button>
             )}
           </div>

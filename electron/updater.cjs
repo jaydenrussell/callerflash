@@ -24,17 +24,61 @@ function filePathFor(version) {
 }
 
 function manifestUrl(channel) {
-  const base = 'https://github.com/jaydenrussell/CallerFlash/releases/latest/download';
-  if (channel === 'beta') return `${base}/beta.yml`;
-  if (channel === 'nightly') return `${base}/nightly.yml`;
-  return `${base}/latest.yml`;
+  // Use the GitHub API to find the latest release for this channel.
+  // The /latest/download/ URL only works for the pinned "latest" release,
+  // not for beta/nightly channels.
+  return 'https://api.github.com/repos/jaydenrussell/CallerFlash/releases';
 }
 
-function manifestUrlForVersion(channel, version) {
-  const base = `https://github.com/jaydenrussell/CallerFlash/releases/download/v${version}`;
-  if (channel === 'beta') return `${base}/beta.yml`;
-  if (channel === 'nightly') return `${base}/nightly.yml`;
-  return `${base}/latest.yml`;
+// ── Find the latest release for a channel from the GitHub API ─────────
+function findReleaseForChannel(releases, channel) {
+  if (!Array.isArray(releases) || releases.length === 0) return null;
+
+  const sorted = [...releases].sort((a, b) => {
+    const dateA = new Date(a.published_at || a.created_at).getTime();
+    const dateB = new Date(b.published_at || b.created_at).getTime();
+    return dateB - dateA; // newest first
+  });
+
+  if (channel === 'stable') {
+    return sorted.find((r) => !r.prerelease) || null;
+  }
+  if (channel === 'beta') {
+    return sorted.find((r) => r.prerelease && /beta/i.test(r.tag_name)) || null;
+  }
+  return (
+    sorted.find((r) => r.prerelease && /nightly/i.test(r.tag_name)) ||
+    sorted.find((r) => r.prerelease) ||
+    null
+  );
+}
+
+// ── Get the download URL for a specific release's manifest ────────────
+function getManifestDownloadUrl(release, channel) {
+  const assets = release.assets || [];
+  const patterns = {
+    stable: ['latest.yml', 'latest.yaml'],
+    beta: ['beta.yml', 'beta.yaml'],
+    nightly: ['nightly.yml', 'nightly.yaml'],
+  };
+  const channelPatterns = patterns[channel] || patterns.stable;
+
+  for (const pattern of channelPatterns) {
+    const asset = assets.find((a) => a.name.toLowerCase() === pattern);
+    if (asset) return asset.browser_download_url;
+  }
+
+  // Fallback: construct URL from tag
+  const tag = release.tag_name;
+  const manifestName = channel === 'beta' ? 'beta.yml' : channel === 'nightly' ? 'nightly.yml' : 'latest.yml';
+  return `https://github.com/jaydenrussell/CallerFlash/releases/download/${tag}/${manifestName}`;
+}
+
+// ── Get the .exe download URL for a specific release ──────────────────
+function getExeDownloadUrl(release) {
+  const assets = release.assets || [];
+  const exe = assets.find((a) => /\.exe$/i.test(a.name));
+  return exe ? exe.browser_download_url : null;
 }
 
 // ── Icon helper ────────────────────────────────────────────────────────
@@ -582,20 +626,46 @@ function createUpdaterWindow(mainWindow) {
 // ── Public API ─────────────────────────────────────────────────────────
 
 /**
- * Check for updates. Returns { version, friendlyName } or { upToDate: true } or { error }.
+ * Check for updates. Returns { version, friendlyName, downloadUrl } or { upToDate: true } or { error }.
  */
 async function checkForUpdates(channel) {
   try {
-    const url = manifestUrl(channel);
-    console.log('[updater] checking:', url);
-    const manifest = await fetchManifest(url);
-    if (!manifest || !manifest.version) {
-      return { error: 'No version found in manifest' };
+    const apiUrl = manifestUrl(channel);
+    console.log('[updater] checking:', apiUrl);
+
+    // Fetch all releases from GitHub API
+    const releases = await fetchManifest(apiUrl);
+    if (!Array.isArray(releases)) {
+      return { error: 'Invalid response from GitHub' };
     }
+
+    // Find the latest release for this channel
+    const release = findReleaseForChannel(releases, channel);
+    if (!release) {
+      return { error: `No releases found for ${channel} channel` };
+    }
+
+    const version = release.tag_name.replace(/^v/, '');
+    const currentVersion = app.getVersion().replace(/^v/, '');
+
+    // Compare versions
+    if (version === currentVersion) {
+      return { upToDate: true, version };
+    }
+
+    // Get the download URLs
+    const manifestDlUrl = getManifestDownloadUrl(release, channel);
+    const exeDlUrl = getExeDownloadUrl(release);
+
+    console.log('[updater] found update:', version, 'exe:', exeDlUrl);
+
     return {
-      version: manifest.version,
-      friendlyName: friendlyVersion(manifest.version),
-      sha512: manifest.sha512,
+      version,
+      friendlyName: friendlyVersion(version),
+      releaseNotes: release.body || '',
+      downloadUrl: exeDlUrl,
+      manifestUrl: manifestDlUrl,
+      htmlUrl: release.html_url,
     };
   } catch (err) {
     console.error('[updater] check failed:', err.message);
@@ -607,20 +677,25 @@ async function checkForUpdates(channel) {
  * Download the update in the background. Called automatically when an update
  * is detected. Cleans up old downloads first.
  */
-async function downloadUpdate(channel, version) {
+async function downloadUpdate(channel, version, downloadUrl) {
   if (currentDownload) {
     console.log('[updater] download already in progress');
     return { status: 'already-downloading' };
   }
 
   const filePath = filePathFor(version);
-  const url = `https://github.com/jaydenrussell/CallerFlash/releases/download/v${version}/${path.basename(filePath)}`;
 
   // Check if already downloaded
   if (fs.existsSync(filePath)) {
     console.log('[updater] already downloaded:', filePath);
     sendUpdaterStatus({ status: 'ready', message: 'Update already downloaded' });
     return { status: 'ready', filePath };
+  }
+
+  // Construct URL if not provided
+  let url = downloadUrl;
+  if (!url) {
+    url = `https://github.com/jaydenrussell/CallerFlash/releases/download/v${version}/CallerFlash-Setup-${version}.exe`;
   }
 
   // Clean up old downloads
@@ -641,7 +716,6 @@ async function downloadUpdate(channel, version) {
   } catch (err) {
     currentDownload = null;
     console.error('[updater] download failed:', err.message);
-    // Clean up partial download
     try { fs.unlinkSync(filePath); } catch {}
     sendUpdaterStatus({ status: 'error', message: err.message });
     return { status: 'error', error: err.message };
@@ -715,8 +789,8 @@ function initUpdaterIPC(mainWindow) {
   });
 
   // Download update (background)
-  ipcMain.on('updater:download', (_event, { channel, version }) => {
-    downloadUpdate(channel, version);
+  ipcMain.on('updater:download', (_event, { channel, version, downloadUrl }) => {
+    downloadUpdate(channel, version, downloadUrl);
   });
 
   // Install update (runs NSIS)
