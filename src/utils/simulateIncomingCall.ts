@@ -164,17 +164,14 @@ function showSeparateToast(data: {
 }
 
 export function simulateIncomingCall(source: 'dashboard' | 'toast-settings' | 'background' = 'dashboard') {
-  const { addCallRecord, addDiagnosticLog, isMinimized } = useAppStore.getState();
+  const store = useAppStore.getState();
+  const { addCallRecord, addDiagnosticLog, isMinimized } = store;
   const caller = sampleCallers[Math.floor(Math.random() * sampleCallers.length)];
 
-  // Sanitize once at the trust boundary (parser exit). A malicious SIP
-  // server can stuff CRLF, null bytes, or HTML into the From display name;
-  // we strip everything outside the printable-ASCII + common-punctuation
-  // range to keep the field safe to render and copy.
   const safeName = caller.name.replace(/[^\x20-\x7E]/g, '').slice(0, 64);
   const safeNumber = sanitizeCallerNumberForClipboard(caller.number);
 
-  const record = {
+  const record: CallRecord = {
     id: crypto.randomUUID(),
     callerNumber: caller.number,
     callerName: safeName,
@@ -186,40 +183,58 @@ export function simulateIncomingCall(source: 'dashboard' | 'toast-settings' | 'b
 
   addCallRecord(record);
 
-  // Show toast ONLY in a separate window — never in-app.
-  //   Electron → IPC to dedicated always-on-top BrowserWindow
-  //   Web      → window.open() popup (real browser window)
-  const { toastConfig } = useAppStore.getState();
-  showSeparateToast({
-    id: record.id,
-    callerNumber: record.callerNumber,
-    callerName: record.callerName,
-    timestamp: record.timestamp.toISOString(),
-    config: {
-      duration: toastConfig.duration,
-      backgroundColor: toastConfig.backgroundColor,
-      accentColor: toastConfig.accentColor,
-      textColor: toastConfig.textColor,
-      borderRadius: toastConfig.borderRadius,
-      opacity: toastConfig.opacity,
-      fontFamily: toastConfig.fontFamily,
-      fontSize: toastConfig.fontSize,
-      autoCopyToClipboard: toastConfig.autoCopyToClipboard,
-      showCallerName: toastConfig.showCallerName,
-      showTimestamp: toastConfig.showTimestamp,
-      maxWidth: toastConfig.maxWidth,
-    },
-  });
+  // ── Always show in-app toast (reliable, works everywhere) ──────────
+  store.addToast(record);
+
+  // ── Also show native OS notification or custom window ──────────────
+  if (store.toastConfig.style === 'native') {
+    // Electron native notification
+    if (window.callerflash?.notify?.show) {
+      window.callerflash.notify.show(
+        'Incoming Call',
+        `${record.callerNumber}${record.callerName ? ` - ${record.callerName}` : ''}`
+      );
+    }
+  } else {
+    // Custom branded toast window (separate BrowserWindow)
+    if (window.callerflash?.toast?.show) {
+      window.callerflash.toast.show({
+        id: record.id,
+        callerNumber: record.callerNumber,
+        callerName: record.callerName,
+        timestamp: record.timestamp.toISOString(),
+        config: {
+          duration: store.toastConfig.duration,
+          backgroundColor: store.toastConfig.backgroundColor,
+          accentColor: store.toastConfig.accentColor,
+          textColor: store.toastConfig.textColor,
+          borderRadius: store.toastConfig.borderRadius,
+          opacity: store.toastConfig.opacity,
+          fontFamily: store.toastConfig.fontFamily,
+          fontSize: store.toastConfig.fontSize,
+          autoCopyToClipboard: store.toastConfig.autoCopyToClipboard,
+          showCallerName: store.toastConfig.showCallerName,
+          showTimestamp: store.toastConfig.showTimestamp,
+          maxWidth: store.toastConfig.maxWidth,
+        },
+      });
+    }
+  }
+
+  // Auto-copy to clipboard if enabled
+  if (store.toastConfig.autoCopyToClipboard && record.callerNumber) {
+    try { navigator.clipboard?.writeText(safeNumber).catch(() => {}); } catch {}
+  }
 
   addDiagnosticLog({
     level: 'info',
     category: 'SIP',
     message: `INVITE received from ${caller.number} (${safeName})`,
-    details: `SIP/2.0 180 Ringing\nFrom: "${safeName}" <sip:${safeNumber}@sip.provider>\nCall-ID: ${crypto.randomUUID()}\nSource: ${source}${isMinimized ? ' \u2022 app minimized' : ''}`,
+    details: `Source: ${source}${isMinimized ? ' • app minimized' : ''}`,
   });
   addDiagnosticLog({
     level: 'info',
     category: 'TOAST',
-    message: `Toast notification displayed for ${caller.number}${isMinimized ? ' while minimized' : ''} (separate window)`,
+    message: `Toast displayed for ${caller.number} (${store.toastConfig.style} style)`,
   });
 }

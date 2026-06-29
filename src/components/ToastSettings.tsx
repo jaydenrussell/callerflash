@@ -58,7 +58,8 @@ export function ToastSettings() {
   // Fire a real incoming call through the same code path the SIP
   // listener would use. In the Electron build this opens the dedicated
   // frameless toast window; in the web demo it renders in-app.
-  const handlePreview = () => {
+  const handlePreview = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent click from propagating to titlebar/drag region
     simulateIncomingCall('toast-settings');
     addDiagnosticLog({
       level: 'info',
