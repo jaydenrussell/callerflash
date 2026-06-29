@@ -126,6 +126,12 @@ contextBridge.exposeInMainWorld('callerflash', {
     version: process.env.npm_package_version || '0.0.0',
   },
 
+  // ── Secure storage (file-based, survives app updates) ───────────
+  storage: {
+    load: () => ipcRenderer.invoke('storage:load'),
+    save: (data) => ipcRenderer.invoke('storage:save', data),
+  },
+
   // ── App lifecycle controls ──────────────────────────────────────
   app: {
     setStartWithWindows: (enabled) => ipcRenderer.send('app:set-start-with-windows', enabled),

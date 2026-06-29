@@ -16,6 +16,9 @@ const { spawn } = require('child_process');
 const sipClient = require('./sipClient.cjs');
 const updater = require('./updater.cjs');
 
+// Initialize secure file-based storage (registers IPC handlers)
+require('./secureStorage.cjs');
+
 // ── Single-instance lock ───────────────────────────────────────────────
 // If a second copy is launched (double-click on the .exe again, etc.),
 // focus the existing window instead of starting a duplicate.

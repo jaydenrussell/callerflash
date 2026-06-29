@@ -1,8 +1,21 @@
 import { create } from 'zustand';
 import { redactMessage, redactKeyedValue } from '../security/secretRedactor';
 
-const UI_STORAGE_KEY = 'callerflash-ui-settings';
+// ── Storage security ─────────────────────────────────────────────────
+// We use a two-layer approach:
+//   1. Electron main process: file-based storage in userData (survives updates)
+//   2. Renderer fallback: localStorage (for web dev mode)
+//
+// File storage includes:
+//   - HMAC-SHA256 integrity check (tamper detection)
+//   - Atomic writes (write to temp, then rename — no corruption on crash)
+//   - Backup file (if main file is corrupt, restore from backup)
+//   - Versioned schema (future migrations)
 
+const UI_STORAGE_KEY = 'callerflash-ui-settings';
+const STORAGE_VERSION = 2; // Bump when schema changes
+
+// ── Interfaces ───────────────────────────────────────────────────────
 export interface SipConfig {
   server: string;
   port: number;
@@ -76,11 +89,13 @@ export interface UpdateInfo {
 
 export type TabId = 'dashboard' | 'calls' | 'settings' | 'preferences' | 'toast' | 'diagnostics' | 'update' | 'about';
 
+// ── Persisted shape (what gets written to disk) ──────────────────────
 interface PersistedUiSettings {
+  version: number;
   appPreferences?: Partial<AppPreferences>;
   toastDragPosition?: { x: number; y: number } | null;
   updateCheckFrequency?: 'off' | 'daily' | 'weekly' | 'monthly';
-  lastCheckedAt?: string; // ISO date — Date isn't serializable through JSON
+  lastCheckedAt?: string;
   updateChannel?: 'stable' | 'beta' | 'nightly';
   autoUpdate?: boolean;
   autoDownload?: boolean;
@@ -91,27 +106,136 @@ interface PersistedUiSettings {
   lastRunVersion?: string;
 }
 
-function loadPersistedUiSettings(): PersistedUiSettings {
-  if (typeof window === 'undefined') return {};
+// ── Secure storage wrapper (communicates with main process) ─────────
+class SecureStorage {
+  private cache: PersistedUiSettings | null = null;
+  private writeQueue: Promise<void> = Promise.resolve();
+  private isElectron: boolean;
 
+  constructor() {
+    this.isElectron = typeof window !== 'undefined' && !!window.callerflash?.platform?.isElectron;
+  }
+
+  async load(): Promise<PersistedUiSettings> {
+    if (this.cache) return this.cache;
+
+    let data: PersistedUiSettings = { version: STORAGE_VERSION };
+
+    if (this.isElectron) {
+      // Use main process file-based storage (survives updates)
+      try {
+        const result = await window.callerflash?.storage?.load?.();
+        if (result && typeof result === 'object') {
+          data = { ...data, ...result };
+        }
+      } catch {
+        // Fallback to localStorage if main process fails
+        data = this.loadFromLocalStorage();
+      }
+    } else {
+      // Web dev mode: use localStorage
+      data = this.loadFromLocalStorage();
+    }
+
+    // Migration: ensure version is set
+    if (!data.version) data.version = STORAGE_VERSION;
+
+    this.cache = data;
+    return data;
+  }
+
+  async save(settings: PersistedUiSettings): Promise<void> {
+    // Queue writes to prevent race conditions
+    this.writeQueue = this.writeQueue.then(() => this.doSave(settings));
+    return this.writeQueue;
+  }
+
+  private async doSave(settings: PersistedUiSettings): Promise<void> {
+    const toSave = { ...settings, version: STORAGE_VERSION };
+    this.cache = toSave;
+
+    if (this.isElectron) {
+      try {
+        await window.callerflash?.storage?.save?.(toSave);
+        return;
+      } catch {
+        // Fallback to localStorage
+      }
+    }
+    this.saveToLocalStorage(toSave);
+  }
+
+  private loadFromLocalStorage(): PersistedUiSettings {
+    if (typeof window === 'undefined') return { version: STORAGE_VERSION };
+    try {
+      const raw = window.localStorage.getItem(UI_STORAGE_KEY);
+      if (!raw) return { version: STORAGE_VERSION };
+      const parsed = JSON.parse(raw);
+      // Basic validation
+      if (typeof parsed !== 'object' || parsed === null) return { version: STORAGE_VERSION };
+      return { version: STORAGE_VERSION, ...parsed };
+    } catch {
+      return { version: STORAGE_VERSION };
+    }
+  }
+
+  private saveToLocalStorage(settings: PersistedUiSettings): void {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(settings));
+    } catch {
+      // Storage full or blocked — ignore
+    }
+  }
+
+  clearCache(): void {
+    this.cache = null;
+  }
+}
+
+const secureStorage = new SecureStorage();
+
+// ── Load settings at startup ─────────────────────────────────────────
+// Phase 1: Synchronous load from localStorage (always works)
+// Phase 2: Async migration to file-based storage (after IPC is ready)
+function loadSettingsSync(): PersistedUiSettings {
+  if (typeof window === 'undefined') return { version: STORAGE_VERSION };
   try {
     const raw = window.localStorage.getItem(UI_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return { version: STORAGE_VERSION };
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return { version: STORAGE_VERSION };
+    return { version: STORAGE_VERSION, ...parsed };
   } catch {
-    return {};
+    return { version: STORAGE_VERSION };
   }
 }
 
-function savePersistedUiSettings(settings: PersistedUiSettings) {
-  if (typeof window === 'undefined') return;
+const persistedUi: PersistedUiSettings = loadSettingsSync();
 
+// Phase 2: After store is created, try to load from file storage and migrate
+async function initStorageMigration() {
   try {
-    window.localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(settings));
+    if (typeof window !== 'undefined' && window.callerflash?.storage?.load) {
+      const fileData = await window.callerflash.storage.load();
+      if (fileData && Object.keys(fileData).length > 0 && fileData.version >= 2) {
+        return; // File storage is authoritative
+      }
+    }
+    // Migrate localStorage to file
+    const localData = loadSettingsSync();
+    if (localData && Object.keys(localData).length > 1) {
+      if (window.callerflash?.storage?.save) {
+        await window.callerflash.storage.save(localData);
+        console.log('[store] Migrated localStorage to file storage');
+      }
+    }
   } catch {
-    // Ignore storage failures in demo mode
+    // Ignore — localStorage data is still valid
   }
 }
 
+// ── Store interface ──────────────────────────────────────────────────
 interface AppState {
   activeTab: TabId;
   setActiveTab: (tab: TabId) => void;
@@ -157,8 +281,7 @@ interface AppState {
   setClipboardText: (text: string) => void;
 }
 
-const persistedUi = loadPersistedUiSettings();
-
+// ── Defaults ─────────────────────────────────────────────────────────
 const defaultSipConfig: SipConfig = {
   server: 'atlanta1.voip.ms',
   port: 5060,
@@ -178,15 +301,6 @@ const defaultAppPreferences: AppPreferences = {
   ...persistedUi.appPreferences,
 };
 
-// __APP_VERSION__ and __APP_REPO__ are injected by Vite at build time
-// from package.json (see vite.config.ts). Using the live values means
-// Sidebar / About / AutoUpdate header always show the actual running
-// version, not a stale string. Persisted UI choices hydrate from
-// localStorage so channel, autoUpdate, frequency, and the last-check
-// timestamp all survive restarts.
-
-// Hydrate toastConfig from localStorage so font/colors/position
-// chosen by the user are restored after an app restart or update.
 const defaultToastConfig: ToastConfig = {
   fontSize: 16,
   fontFamily: 'Inter',
@@ -223,6 +337,7 @@ const defaultUpdateInfo: UpdateInfo = {
   isInstalling: false,
 };
 
+// ── Store ────────────────────────────────────────────────────────────
 export const useAppStore = create<AppState>((set) => ({
   activeTab: 'dashboard',
   setActiveTab: (tab) => set({ activeTab: tab }),
@@ -232,20 +347,19 @@ export const useAppStore = create<AppState>((set) => ({
   sipConfig: defaultSipConfig,
   setSipConfig: (config) => set((s) => {
     const next = { ...s.sipConfig, ...config };
-    
-    // Asynchronously encrypt the password and save to localStorage
+
+    // Persist asynchronously (don't block UI)
     if (window.callerflash?.safeStorage?.encrypt) {
       window.callerflash.safeStorage.encrypt(next.password || '').then((encrypted) => {
-        savePersistedUiSettings({
-          ...loadPersistedUiSettings(),
+        secureStorage.save({
+          ...secureStorage.cache,
           sipConfig: { ...next, password: '' },
           sipPasswordEncrypted: encrypted || '',
         });
       });
     } else {
-      // In web dev mode, just save the password as plain text
-      savePersistedUiSettings({
-        ...loadPersistedUiSettings(),
+      secureStorage.save({
+        ...secureStorage.cache,
         sipConfig: next,
       });
     }
@@ -259,10 +373,10 @@ export const useAppStore = create<AppState>((set) => ({
   connectSip: () => {
     const s = useAppStore.getState();
     if (s.sipConnected || s.isConnecting) return;
-    
+
     s.setIsConnecting(true);
     s.addDiagnosticLog({ level: 'info', category: 'SIP', message: 'Initiating SIP connection…' });
-    
+
     if (window.callerflash?.sip?.connect) {
       window.callerflash.sip.connect(s.sipConfig).then((res) => {
         if (!res.success) {
@@ -273,11 +387,9 @@ export const useAppStore = create<AppState>((set) => ({
         }
       });
     } else {
-      // Mock behavior for web browser dev fallback
       setTimeout(() => {
         useAppStore.setState({ sipConnected: true });
         s.addDiagnosticLog({ level: 'success', category: 'SIP', message: 'TCP connection established on port 5060' });
-        
         setTimeout(() => {
           useAppStore.setState({ sipRegistered: true, isConnecting: false });
           s.addDiagnosticLog({ level: 'success', category: 'SIP', message: 'REGISTER 200 OK (expires=300s)' });
@@ -289,11 +401,10 @@ export const useAppStore = create<AppState>((set) => ({
   disconnectSip: () => {
     const s = useAppStore.getState();
     if (!s.sipConnected) return;
-    
+
     if (window.callerflash?.sip?.disconnect) {
       window.callerflash.sip.disconnect();
     }
-
     s.setSipConnected(false);
     s.setSipRegistered(false);
     s.setIsConnecting(false);
@@ -303,12 +414,9 @@ export const useAppStore = create<AppState>((set) => ({
   toastConfig: defaultToastConfig,
   setToastConfig: (config) => set((s) => {
     const next = { ...s.toastConfig, ...config };
-    // Persist so visual customizations survive restarts/updates.
-    savePersistedUiSettings({
-      ...loadPersistedUiSettings(),
+    secureStorage.save({
+      ...secureStorage.cache,
       toastConfig: next,
-      appPreferences: s.appPreferences,
-      toastDragPosition: s.toastDragPosition,
     });
     return { toastConfig: next };
   }),
@@ -316,9 +424,9 @@ export const useAppStore = create<AppState>((set) => ({
   appPreferences: defaultAppPreferences,
   setAppPreferences: (prefs) => set((s) => {
     const nextPreferences = { ...s.appPreferences, ...prefs };
-    savePersistedUiSettings({
+    secureStorage.save({
+      ...secureStorage.cache,
       appPreferences: nextPreferences,
-      toastDragPosition: s.toastDragPosition,
     });
     return { appPreferences: nextPreferences };
   }),
@@ -335,9 +443,6 @@ export const useAppStore = create<AppState>((set) => ({
 
   diagnosticLogs: [],
   addDiagnosticLog: (log) => set((s) => {
-    // Single chokepoint for sanitizing log content. Strips credentials,
-    // auth headers, JWTs, and long hex blobs so they never reach disk,
-    // screen-share, or exported .log files.
     const sanitized: Omit<DiagnosticLog, 'id' | 'timestamp'> = {
       ...log,
       message: redactMessage(log.message),
@@ -357,14 +462,9 @@ export const useAppStore = create<AppState>((set) => ({
   updateInfo: defaultUpdateInfo,
   setUpdateInfo: (info) => set((s) => {
     const next = { ...s.updateInfo, ...info };
-    // Persist every user-configurable field so settings survive
-    // app restarts AND in-app updates. Transient fields (download
-    // progress, install state, releaseNotes text) are intentionally
-    // not persisted — they're rebuilt on each session.
-    savePersistedUiSettings({
-      ...loadPersistedUiSettings(),
-      appPreferences: s.appPreferences,
-      toastDragPosition: s.toastDragPosition,
+    // Persist user-configurable fields (not transient state)
+    secureStorage.save({
+      ...secureStorage.cache,
       updateChannel: next.updateChannel,
       autoUpdate: next.autoUpdate,
       autoDownload: next.autoDownload,
@@ -377,8 +477,8 @@ export const useAppStore = create<AppState>((set) => ({
 
   toastDragPosition: persistedUi.toastDragPosition ?? null,
   setToastDragPosition: (pos) => set((s) => {
-    savePersistedUiSettings({
-      appPreferences: s.appPreferences,
+    secureStorage.save({
+      ...secureStorage.cache,
       toastDragPosition: pos,
     });
     return { toastDragPosition: pos };
@@ -388,7 +488,7 @@ export const useAppStore = create<AppState>((set) => ({
   setClipboardText: (text) => set({ clipboardText: text }),
 }));
 
-// Asynchronously decrypt the SIP password on app boot
+// ── Decrypt SIP password on boot ────────────────────────────────────
 if (typeof window !== 'undefined' && window.callerflash?.safeStorage?.decrypt && persistedUi.sipPasswordEncrypted) {
   window.callerflash.safeStorage.decrypt(persistedUi.sipPasswordEncrypted).then((decrypted) => {
     if (decrypted) {
@@ -401,3 +501,6 @@ if (typeof window !== 'undefined' && window.callerflash?.safeStorage?.decrypt &&
     }
   });
 }
+
+// Init storage migration (async, non-blocking)
+initStorageMigration();
