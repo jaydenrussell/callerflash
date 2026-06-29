@@ -533,30 +533,39 @@ function createToastWindow(data) {
 
   // Show the window once the content is loaded
   toastWindow.webContents.on('did-finish-load', () => {
+    log('[toast] did-finish-load fired');
     // Bring the window to front — critical on Windows where alwaysOnTop
     // alone may not be enough to make a hidden window visible.
     if (toastWindow && !toastWindow.isDestroyed()) {
       toastWindow.show();
       toastWindow.moveTop();
+      log('[toast] window shown at', toastWindow.getPosition());
     }
+  });
+
+  // Safety: show after a short timeout even if did-finish-load races
+  setTimeout(() => {
+    if (toastWindow && !toastWindow.isDestroyed() && !toastWindow.isVisible()) {
+      log('[toast] safety timeout: forcing show');
+      toastWindow.show();
+      toastWindow.moveTop();
+    }
+  }, 200);
+
+  // Debug: log if load fails
+  toastWindow.webContents.on('did-fail-load', (_e, errorCode, errorDescription) => {
+    log('[toast] LOAD FAILED:', errorCode, errorDescription);
   });
 
   // Persist position + size on every move / resize
   toastWindow.on('move', saveToastState);
   toastWindow.on('resize', saveToastState);
 
-  // Safety: show after a short timeout even if did-finish-load races
-  setTimeout(() => {
-    if (toastWindow && !toastWindow.isDestroyed() && !toastWindow.isVisible()) {
-      toastWindow.show();
-      toastWindow.moveTop();
-    }
-  }, 200);
-
   return toastWindow;
 }
 
 ipcMain.on('toast:show', (_event, data) => {
+  log('[toast] toast:show received, data:', JSON.stringify(data || {}).substring(0, 100));
   createToastWindow(data);
 });
 

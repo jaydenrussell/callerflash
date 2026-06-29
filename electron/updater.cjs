@@ -186,6 +186,15 @@ function getExeUrl(release) {
 
 // ── Check for updates ──────────────────────────────────────────────────
 async function checkForUpdates(channel) {
+  // In dev mode (running from source, not packaged), skip update checks.
+  // package.json version (e.g. "1.4.2") doesn't reflect actual nightly builds,
+  // so comparison is meaningless and causes false "update available" alerts.
+  const isPackaged = app.isPackaged || (process.execPath && process.execPath.includes('app.asar'));
+  if (!isPackaged) {
+    log('dev mode: skipping update check');
+    return { upToDate: true, version: app.getVersion() };
+  }
+
   log('checking channel:', channel);
 
   const releases = await fetchJson('https://api.github.com/repos/jaydenrussell/CallerFlash/releases');
