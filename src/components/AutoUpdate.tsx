@@ -236,10 +236,15 @@ export function AutoUpdate() {
     }
   }, [updateInfo.updateAvailable, updateInfo.latestVersion]);
 
-  // Listen for Electron main process updater progress.
+  // Listen for Electron main process updater status.
   useEffect(() => {
-    if (!window.callerflash?.updater?.onStatus) return;
+    if (!window.callerflash?.updater?.onStatus) {
+      console.log('[UI] updater.onStatus NOT available');
+      return;
+    }
+    console.log('[UI] updater.onStatus listener registered');
     return window.callerflash.updater.onStatus((status) => {
+      console.log('[UI] updater:status received:', JSON.stringify(status));
       if (status.status === 'downloading') {
         setPhase('downloading');
         setUpdateInfo({ isDownloading: true });
@@ -276,8 +281,13 @@ export function AutoUpdate() {
 
   // Listen for download progress (percentage)
   useEffect(() => {
-    if (!window.callerflash?.updater?.onProgress) return;
+    if (!window.callerflash?.updater?.onProgress) {
+      console.log('[UI] updater.onProgress NOT available');
+      return;
+    }
+    console.log('[UI] updater.onProgress listener registered');
     return window.callerflash.updater.onProgress((data) => {
+      console.log('[UI] updater:progress received:', JSON.stringify(data));
       if (data.percent != null) {
         setUpdateInfo({ downloadProgress: data.percent });
       }
@@ -449,6 +459,7 @@ export function AutoUpdate() {
    * progress window, downloads, verifies, runs NSIS, relaunches.
    */
   const handleInstall = () => {
+    console.log('[UI] handleInstall clicked, phase=' + phase + ' latestVersion=' + updateInfo.latestVersion + ' updateReady=' + updateReady);
     if (phase === 'installing') return;
     if (!updateInfo.latestVersion) return;
 
@@ -459,9 +470,12 @@ export function AutoUpdate() {
     });
 
     if (window.callerflash?.updater?.install) {
+      console.log('[UI] handleInstall: calling IPC updater.install');
       window.callerflash.updater.install(updateInfo.latestVersion);
       setPhase('installing');
       setUpdateInfo({ isInstalling: true });
+    } else {
+      console.log('[UI] handleInstall: IPC bridge NOT available!');
     }
   };
 
@@ -469,8 +483,15 @@ export function AutoUpdate() {
    * Update: download the file, then install when ready.
    */
   const handleUpdate = () => {
-    if (phase === 'downloading' || phase === 'installing') return;
-    if (!updateInfo.latestVersion) return;
+    console.log('[UI] handleUpdate clicked, phase=' + phase + ' latestVersion=' + updateInfo.latestVersion + ' downloadUrl=' + downloadUrl);
+    if (phase === 'downloading' || phase === 'installing') {
+      console.log('[UI] handleUpdate: blocked, already busy');
+      return;
+    }
+    if (!updateInfo.latestVersion) {
+      console.log('[UI] handleUpdate: blocked, no latestVersion');
+      return;
+    }
 
     addDiagnosticLog({
       level: 'info',
@@ -479,9 +500,12 @@ export function AutoUpdate() {
     });
 
     if (window.callerflash?.updater?.download) {
+      console.log('[UI] handleUpdate: calling IPC updater.download');
       window.callerflash.updater.download(updateInfo.updateChannel, updateInfo.latestVersion, downloadUrl);
       setPhase('downloading');
       setUpdateInfo({ isDownloading: true });
+    } else {
+      console.log('[UI] handleUpdate: IPC bridge NOT available! window.callerflash.updater.download is undefined');
     }
   };
 
