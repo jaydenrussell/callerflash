@@ -148,7 +148,21 @@ async function checkForUpdates(channel) {
 
   log('found:', version, 'published:', releaseDate.toISOString(), 'current:', currentVersion);
 
-  // Compare versions
+  // Universal check: if release tag matches current version, it's the SAME release
+  if (version === currentVersion) {
+    log('release tag matches current version exactly → up to date');
+    return { upToDate: true, version: currentVersion };
+  }
+
+  // Also check if the tag name (normalized) is contained in or contains the current version
+  const tagDate = String(release.tag_name).replace(/^v/, '').replace(/[-.]/g, '');
+  const curDate = String(currentVersion).replace(/[-.]/g, '');
+  if (tagDate === curDate || tagDate.includes(curDate) || curDate.includes(tagDate)) {
+    log('release tag is a variant of current version → up to date');
+    return { upToDate: true, version: currentVersion };
+  }
+
+  // Compare versions by channel
   if (channel === 'stable') {
     // Stable: simple semver compare
     const remote = version.replace(/[-+].*/, '').split('.').map(Number);
@@ -165,16 +179,14 @@ async function checkForUpdates(channel) {
     const isDev = process.execPath.includes('electron') || process.execPath.includes('node');
     if (!isDev) {
       // Packaged: compare release date vs exe mtime
+      // Use exe mtime as the build timestamp — if release was published before
+      // or at the same time as our build, we already have it
       let buildTime = Date.now();
       try { buildTime = fs.statSync(process.execPath).mtimeMs; } catch {}
       if (releaseDate.getTime() <= buildTime) {
         log('release is same or older than current build → up to date');
         return { upToDate: true, version: currentVersion };
       }
-    }
-    // Dev mode or newer release: check if version strings are identical
-    if (version === currentVersion) {
-      return { upToDate: true, version: currentVersion };
     }
   }
 
@@ -189,9 +201,11 @@ async function checkForUpdates(channel) {
 
 // ── Download update (background, no UI window) ─────────────────────────
 async function downloadUpdate(channel, version, downloadUrl) {
+  log('downloadUpdate START: channel=' + channel + ' version=' + version);
   if (activeDownload) { log('download already in progress'); return { status: 'busy' }; }
 
   const destPath = exePathFor(version);
+  log('downloadUpdate: destPath=' + destPath);
 
   // Already downloaded?
   if (fs.existsSync(destPath)) {
@@ -235,8 +249,10 @@ async function downloadUpdate(channel, version, downloadUrl) {
       const req = transport.get(downloadUrl, {
         headers: { 'User-Agent': 'CallerFlash-Updater' },
       }, (res) => {
+        log('download: response statusCode=' + res.statusCode);
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume();
+          log('download: following redirect to', res.headers.location);
           // Follow redirect by recursing
           downloadUpdate(channel, version, res.headers.location).then(resolve).catch(reject);
           return;
@@ -248,6 +264,7 @@ async function downloadUpdate(channel, version, downloadUrl) {
 
         const total = parseInt(res.headers['content-length'] || '0', 10);
         let received = 0;
+        log('download: content-length=' + total);
 
         res.on('data', (chunk) => {
           received += chunk.length;
@@ -356,23 +373,29 @@ function getDownloadState() {
 // ── IPC handlers ───────────────────────────────────────────────────────
 function initUpdaterIPC(mainWindow) {
   mainWindowRef = mainWindow;
+  log('initUpdaterIPC: mainWindow =', mainWindow ? 'OK' : 'NULL');
 
   ipcMain.handle('updater:check', async (_e, channel) => {
+    log('updater:check handler invoked, channel:', channel);
     const result = await checkForUpdates(channel || 'stable');
+    log('updater:check result:', JSON.stringify(result));
     return result || { upToDate: true };
   });
 
   ipcMain.on('updater:download', async (_e, { channel, version, downloadUrl }) => {
-    log('download requested:', channel, version, downloadUrl?.substring(0, 60));
-    await downloadUpdate(channel, version, downloadUrl);
+    log('updater:download handler invoked:', channel, version, downloadUrl?.substring(0, 80));
+    setImmediate(() => {
+      downloadUpdate(channel, version, downloadUrl);
+    });
   });
 
   ipcMain.on('updater:install', (_e, { version }) => {
-    log('install requested:', version);
+    log('updater:install handler invoked:', version);
     installUpdate(version);
   });
 
   ipcMain.handle('updater:getDownloadState', () => {
+    log('updater:getDownloadState handler invoked');
     return getDownloadState();
   });
 

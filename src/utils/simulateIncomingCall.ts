@@ -193,7 +193,9 @@ export function simulateIncomingCall(source: 'dashboard' | 'toast-settings' | 'b
       );
     }
   } else {
-    // Custom/Branded style: always-on-top inline HTML window
+    // Custom/Branded style: always-on-top inline HTML window ONLY
+    // Do NOT call store.addToast — the toast renders in a separate
+    // independent BrowserWindow, not inside the main app UI.
     if (window.callerflash?.toast?.show) {
       window.callerflash.toast.show({
         id: record.id,
@@ -213,6 +215,7 @@ export function simulateIncomingCall(source: 'dashboard' | 'toast-settings' | 'b
           showCallerName: store.toastConfig.showCallerName,
           showTimestamp: store.toastConfig.showTimestamp,
           maxWidth: store.toastConfig.maxWidth,
+          style: store.toastConfig.style,
         },
       });
     }
