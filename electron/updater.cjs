@@ -6,33 +6,34 @@ const http = require('http');
 const { spawn } = require('child_process');
 const { createHash } = require('crypto');
 
-// ── State ──────────────────────────────────────────────────────────────
-let updaterWindow = null;
+// ── Module-level state ─────────────────────────────────────────────────
 let mainWindowRef = null;
+let updaterWindow = null;
 let updaterCanClose = false;
-let currentDownload = null;
+let activeDownload = null; // { cancel: fn }
 
-// ── Paths ───────────────────────────────────────────────────────────────
+// ── Helpers ─────────────────────────────────────────────────────────────
+const log = (...args) => console.log('[updater]', ...args);
+const logErr = (...args) => console.error('[updater]', ...args);
+
 function downloadsDir() {
   const dir = path.join(app.getPath('temp'), 'callerflash-updates');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function filePathFor(version) {
+function exePathFor(version) {
   return path.join(downloadsDir(), `CallerFlash-${version}.exe`);
 }
 
-// ── Icon helper ────────────────────────────────────────────────────────
 function loadAppIcon() {
-  const resPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
-  const candidates = [
+  const resPath = process.resourcesPath || '';
+  for (const iconPath of [
     path.join(resPath, 'cflogo.png'),
     path.join(resPath, 'cflogo.ico'),
     path.join(__dirname, '../buildResources/cflogo.png'),
     path.join(__dirname, '../buildResources/cflogo.ico'),
-  ];
-  for (const iconPath of candidates) {
+  ]) {
     try {
       const img = nativeImage.createFromPath(iconPath);
       if (!img.isEmpty()) return img;
@@ -41,126 +42,71 @@ function loadAppIcon() {
   return nativeImage.createEmpty();
 }
 
-function loadAppIconDataURL() {
-  const icon = loadAppIcon();
-  return icon.isEmpty() ? '' : icon.toDataURL();
+// ── Send to updater window ─────────────────────────────────────────────
+function sendStatus(payload) {
+  if (updaterWindow && !updaterWindow.isDestroyed()) {
+    updaterWindow.webContents.send('updater:status', payload);
+  }
+  // Also send to main window if it exists
+  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+    mainWindowRef.webContents.send('updater:status', payload);
+  }
 }
 
-// ── Friendly version names ─────────────────────────────────────────────
+function sendProgress(payload) {
+  if (updaterWindow && !updaterWindow.isDestroyed()) {
+    updaterWindow.webContents.send('updater:progress', payload);
+  }
+  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+    mainWindowRef.webContents.send('updater:progress', payload);
+  }
+}
+
+// ── Friendly version ───────────────────────────────────────────────────
 function friendlyVersion(version) {
   if (!version) return 'Unknown';
-  let v = version.replace(/^v/, '');
-  const nightly = v.match(/nightly\.(\d{4})(\d{2})(\d{2})(?:-(\d+))?/);
+  const v = version.replace(/^v/, '');
+  const nightly = v.match(/nightly[.\-](\d{4})(\d{2})(\d{2})(?:[.\-](\d+))?/);
   if (nightly) {
     const [, y, m, d, n] = nightly;
-    return `Nightly ${y}.${m}.${d}${n ? ' (build ' + n + ')' : ''}`;
+    return `Nightly ${y}.${m}.${d}${n ? ' #' + n : ''}`;
   }
-  const beta = v.match(/^(\d+\.\d+\.\d+)-beta\.(\d+)$/);
-  if (beta) return `Beta ${beta[1]} (beta ${beta[2]})`;
+  if (/beta/i.test(v)) return `Beta ${v.replace(/[.\-]beta.*/, '')}`;
   return `Version ${v}`;
-}
-
-// ── Clean up old downloads ─────────────────────────────────────────────
-function cleanupOldDownloads(keepVersion) {
-  try {
-    const dir = downloadsDir();
-    for (const name of fs.readdirSync(dir)) {
-      if (!name.endsWith('.exe')) continue;
-      if (keepVersion && name.includes(keepVersion)) continue;
-      fs.unlinkSync(path.join(dir, name));
-    }
-  } catch { /* ignore */ }
-}
-
-// ── Download a URL to a file with progress ────────────────────────────
-function downloadFile(url, filePath, onProgress) {
-  return new Promise((resolve, reject) => {
-    try {
-      const parsed = new URL(url);
-      const transport = parsed.protocol === 'https:' ? https : http;
-      const fileStream = fs.createWriteStream(filePath);
-      const hash = createHash('sha512');
-
-      const request = transport.get(url, { headers: { 'User-Agent': 'CallerFlash-Updater' } }, (response) => {
-        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          response.resume();
-          downloadFile(response.headers.location, filePath, onProgress).then(resolve).catch(reject);
-          return;
-        }
-        if (response.statusCode !== 200) {
-          reject(new Error(`HTTP ${response.statusCode}`));
-          return;
-        }
-
-        const totalBytes = parseInt(response.headers['content-length'] || '0', 10);
-        let received = 0;
-
-        response.on('data', (chunk) => {
-          received += chunk.length;
-          hash.update(chunk);
-          if (totalBytes > 0 && typeof onProgress === 'function') {
-            onProgress(Math.round((received / totalBytes) * 100), received, totalBytes);
-          }
-        });
-
-        response.pipe(fileStream);
-
-        fileStream.on('finish', () => {
-          fileStream.close(() => {
-            resolve({ filePath, sha512: hash.digest('hex'), bytesReceived: received });
-          });
-        });
-      });
-
-      request.on('error', reject);
-      request.setTimeout(120_000, () => {
-        request.destroy(new Error('Download timeout (120s)'));
-      });
-    } catch (err) {
-      reject(err);
-    }
-  });
 }
 
 // ── Fetch JSON from URL ────────────────────────────────────────────────
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
-    try {
-      const parsed = new URL(url);
-      const transport = parsed.protocol === 'https:' ? https : http;
-      const request = transport.get(url, { headers: { 'User-Agent': 'CallerFlash-Updater', Accept: 'application/json' } }, (response) => {
-        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          response.resume();
-          fetchJson(response.headers.location).then(resolve).catch(reject);
-          return;
-        }
-        if (response.statusCode !== 200) {
-          reject(new Error(`HTTP ${response.statusCode}`));
-          return;
-        }
-        let body = '';
-        response.on('data', (chunk) => { body += chunk; });
-        response.on('end', () => {
-          try { resolve(JSON.parse(body)); }
-          catch (e) { reject(new Error('Invalid JSON response')); }
-        });
+    const parsed = new URL(url);
+    const transport = parsed.protocol === 'https:' ? https : http;
+    const req = transport.get(url, {
+      headers: { 'User-Agent': 'CallerFlash-Updater', Accept: 'application/json' },
+    }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        return fetchJson(res.headers.location).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
+      let body = '';
+      res.on('data', (c) => body += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); }
+        catch (e) { reject(new Error('Invalid JSON')); }
       });
-      request.on('error', reject);
-      request.setTimeout(10_000, () => request.destroy(new Error('Request timeout')));
-    } catch (err) {
-      reject(err);
-    }
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(new Error('Timeout')); });
   });
 }
 
 // ── Find release for channel ──────────────────────────────────────────
-// Each channel ONLY shows its own releases. No cross-channel fallback.
-function findReleaseForChannel(releases, channel) {
-  if (!Array.isArray(releases) || releases.length === 0) return null;
-  const sorted = [...releases].sort((a, b) => {
-    return new Date(b.published_at || b.created_at || 0).getTime() -
-           new Date(a.published_at || a.created_at || 0).getTime();
-  });
+function findRelease(releases, channel) {
+  if (!Array.isArray(releases) || !releases.length) return null;
+  const sorted = [...releases].sort((a, b) =>
+    new Date(b.published_at || 0) - new Date(a.published_at || 0));
 
   if (channel === 'stable') {
     return sorted.find((r) => !r.prerelease && !r.draft) || null;
@@ -168,568 +114,300 @@ function findReleaseForChannel(releases, channel) {
   if (channel === 'beta') {
     return sorted.find((r) => /beta/i.test(r.tag_name)) || null;
   }
+  // nightly
   return sorted.find((r) => /nightly/i.test(r.tag_name)) || null;
 }
 
-// ── Compare two semver-like versions ─────────────────────────────────
-// Returns >0 if a is newer, <0 if b is newer, 0 if equal
-function compareVersions(a, b) {
-  // Handle special prerelease tags
-  const aIsNightly = /nightly/i.test(a);
-  const bIsNightly = /nightly/i.test(b);
-  const aIsBeta = /beta/i.test(a) && !aIsNightly;
-  const bIsBeta = /beta/i.test(b) && !bIsNightly;
-
-  // Extract numeric parts for comparison
-  const aNum = a.replace(/^v/, '').replace(/-.+$/, ''); // "1.4.2" from "1.4.2-nightly.20260627"
-  const bNum = b.replace(/^v/, '').replace(/-.+$/, '');
-
-  // Compare numeric parts first
-  const pa = aNum.split('.').map(Number);
-  const pb = bNum.split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
-    const na = pa[i] || 0;
-    const nb = pb[i] || 0;
-    if (na !== nb) return na - nb;
-  }
-
-  // Same numeric version — compare prerelease precedence
-  // stable > beta > nightly
-  const preOrder = { stable: 3, beta: 2, nightly: 1 };
-  const aPre = aIsNightly ? 'nightly' : aIsBeta ? 'beta' : 'stable';
-  const bPre = bIsNightly ? 'nightly' : bIsBeta ? 'beta' : 'stable';
-
-  if (preOrder[aPre] !== preOrder[bPre]) return preOrder[aPre] - preOrder[bPre];
-
-  // Same prerelease type — compare nightly dates (if nightly)
-  if (aIsNightly && bIsNightly) {
-    const aDate = a.match(/(\d{8})/)?.[1] || '';
-    const bDate = b.match(/(\d{8})/)?.[1] || '';
-    if (aDate !== bDate) return aDate < bDate ? -1 : 1;
-  }
-
-  return 0;
-}
-
-function getExeDownloadUrl(release) {
-  const assets = release.assets || [];
-  const exe = assets.find((a) => /\.exe$/i.test(a.name));
+function getExeUrl(release) {
+  const exe = (release.assets || []).find((a) => /\.exe$/i.test(a.name));
   return exe ? exe.browser_download_url : null;
 }
 
-// ── Send to updater window ─────────────────────────────────────────────
-function sendUpdaterStatus(payload) {
-  if (updaterWindow && !updaterWindow.isDestroyed()) {
-    updaterWindow.webContents.send('updater:status', payload);
-  }
-}
-
-function sendUpdaterProgress(payload) {
-  if (updaterWindow && !updaterWindow.isDestroyed()) {
-    updaterWindow.webContents.send('updater:progress', payload);
-  }
-}
-
-// ── Updater window HTML ────────────────────────────────────────────────
-function buildUpdaterHtml(iconDataUrl) {
-  const safeIcon = iconDataUrl || '';
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #0d0d0d;
-      --surface: #181818;
-      --border: rgba(255,255,255,0.06);
-      --text: #f0f0f0;
-      --text-dim: rgba(255,255,255,0.45);
-      --accent: #60cdff;
-      --success: #6ccb5f;
-      --error: #ff6b6b;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100vw; height: 100vh;
-      background: var(--bg);
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      color: var(--text);
-      overflow: hidden;
-    }
-    .title-bar {
-      height: 36px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      -webkit-app-region: drag;
-      flex-shrink: 0;
-    }
-    .title-bar .title {
-      font-size: 11px;
-      color: var(--text-dim);
-      font-weight: 500;
-    }
-    .title-bar .close-btn {
-      position: absolute;
-      right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 28px; height: 28px;
-      border-radius: 8px;
-      border: none;
-      background: transparent;
-      color: var(--text-dim);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      -webkit-app-region: no-drag;
-      transition: all 0.15s ease;
-    }
-    .title-bar .close-btn:hover {
-      background: var(--error);
-      color: white;
-    }
-    .frame {
-      width: 340px; height: 460px;
-      background: var(--surface);
-      border-radius: 0 0 48px 48px;
-      border: 1px solid var(--border);
-      border-top: none;
-      box-shadow: 0 30px 80px rgba(0,0,0,0.7);
-      padding: 24px 32px 32px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      position: absolute;
-      top: 36px; left: 50%;
-      transform: translateX(-50%);
-    }
-    .logo {
-      width: 56px; height: 56px;
-      border-radius: 16px;
-      padding: 10px;
-      background: rgba(96,205,255,0.10);
-      border: 1px solid rgba(96,205,255,0.18);
-      display: grid;
-      place-items: center;
-      margin-bottom: 16px;
-    }
-    .logo img { width: 100%; height: 100%; object-fit: contain; }
-    .progress-ring {
-      position: relative;
-      width: 80px; height: 80px;
-      margin-bottom: 12px;
-    }
-    .progress-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-    .progress-ring .track { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 4; }
-    .progress-ring .fill {
-      fill: none; stroke: url(#progressGradient); stroke-width: 4; stroke-linecap: round;
-      stroke-dasharray: 226.19; stroke-dashoffset: 226.19;
-      transition: stroke-dashoffset 0.4s ease;
-    }
-    .progress-ring .fill.indeterminate {
-      animation: spin 1.4s linear infinite;
-      stroke-dashoffset: 57;
-    }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    .progress-ring .center-text {
-      position: absolute; top: 50%; left: 50%;
-      transform: translate(-50%, -50%); text-align: center;
-    }
-    .progress-ring .percent { font-size: 16px; font-weight: 700; }
-    .progress-ring .label { font-size: 8px; color: var(--text-dim); text-transform: uppercase; }
-    .status-text { font-size: 13px; font-weight: 600; text-align: center; margin-bottom: 4px; min-height: 18px; }
-    .detail { font-size: 11px; color: var(--text-dim); text-align: center; min-height: 14px; }
-    .size-info { font-size: 10px; color: var(--text-dim); text-align: center; margin-top: 2px; }
-    .status-text.success { color: var(--success); }
-    .status-text.error { color: var(--error); }
-    .version-display { margin-top: auto; text-align: center; }
-    .version-display .from-to {
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-      font-size: 11px; color: var(--text-dim);
-    }
-    .version-display .from-to .arrow { color: var(--accent); font-size: 10px; }
-    .version-display .from-to .ver {
-      padding: 3px 10px; border-radius: 999px;
-      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
-      font-variant-numeric: tabular-nums;
-    }
-    .version-display .from-to .ver.new {
-      background: rgba(96,205,255,0.10); border-color: rgba(96,205,255,0.20); color: var(--accent);
-    }
-  </style>
-</head>
-<body>
-  <div class="title-bar">
-    <span class="title">CallerFlash Update</span>
-    <button class="close-btn" id="closeBtn" title="Close">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-        <path d="M18 6L6 18"/><path d="M6 6l12 12"/>
-      </svg>
-    </button>
-  </div>
-  <div class="frame">
-    <div class="logo"><img src="${safeIcon}" alt="CallerFlash" /></div>
-    <div class="progress-ring">
-      <svg viewBox="0 0 80 80">
-        <defs>
-          <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#60cdff"/><stop offset="100%" stop-color="#6ccb5f"/>
-          </linearGradient>
-        </defs>
-        <circle class="track" cx="40" cy="40" r="36"/>
-        <circle class="fill indeterminate" id="ringFill" cx="40" cy="40" r="36" style="transform-origin: center;"/>
-      </svg>
-      <div class="center-text">
-        <div class="percent" id="percent">—</div>
-        <div class="label" id="label">Waiting</div>
-      </div>
-    </div>
-    <div class="status-text" id="status"></div>
-    <div class="detail" id="detail"></div>
-    <div class="size-info" id="size"></div>
-    <div class="version-display">
-      <div class="from-to">
-        <span class="ver" id="verCurrent">v${app.getVersion()}</span>
-        <span class="arrow">→</span>
-        <span class="ver new" id="verLatest">…</span>
-      </div>
-    </div>
-  </div>
-  <script>
-    const ring = document.getElementById('ringFill');
-    const percent = document.getElementById('percent');
-    const label = document.getElementById('label');
-    const status = document.getElementById('status');
-    const detail = document.getElementById('detail');
-    const sizeEl = document.getElementById('size');
-    const verLatest = document.getElementById('verLatest');
-    const CIRC = 2 * Math.PI * 36;
-
-    function setProgress(pct) {
-      ring.classList.remove('indeterminate');
-      ring.style.transform = 'none';
-      ring.style.strokeDashoffset = CIRC * (1 - pct / 100);
-      percent.textContent = Math.round(pct) + '%';
-      label.textContent = 'Downloading';
-    }
-    function setIndeterminate() {
-      ring.classList.add('indeterminate');
-      ring.style.strokeDashoffset = CIRC * 0.75;
-      percent.textContent = '—';
-      label.textContent = 'Working';
-    }
-    function setStatus(text, cls) {
-      status.textContent = text || '';
-      status.className = 'status-text' + (cls ? ' ' + cls : '');
-    }
-    function setDetail(text) { detail.textContent = text || ''; }
-    function setSize(text) { sizeEl.textContent = text || ''; }
-    function setLatestVersion(text) { verLatest.textContent = text; }
-
-    document.getElementById('closeBtn').addEventListener('click', function() { window.close(); });
-
-    window.callerflashUpdater?.onProgress?.(function(data) {
-      if (data.percent != null && data.percent > 0) setProgress(data.percent);
-      if (data.bytesTransferred != null && data.total != null) {
-        setSize((data.bytesTransferred / 1048576).toFixed(1) + ' / ' + (data.total / 1048576).toFixed(1) + ' MB');
-      }
-    });
-
-    window.callerflashUpdater?.onStatus?.(function(data) {
-      if (data.status === 'downloading') {
-        setStatus('Downloading update', '');
-        setDetail(data.message || 'Fetching from GitHub…');
-        if (!ring.classList.contains('indeterminate')) setIndeterminate();
-      } else if (data.status === 'ready') {
-        setStatus('Ready to install', 'success');
-        setDetail('Click Install in the app to update.');
-        label.textContent = 'Ready';
-        ring.classList.remove('indeterminate');
-        ring.style.strokeDashoffset = 0;
-        percent.textContent = '100%';
-      } else if (data.status === 'installing') {
-        setStatus('Installing update', '');
-        setDetail('Closing app and running installer…');
-        label.textContent = 'Installing';
-        ring.classList.remove('indeterminate');
-        ring.style.strokeDashoffset = 0;
-        percent.textContent = '100%';
-      } else if (data.status === 'success') {
-        setStatus('Update complete', 'success');
-        setDetail('CallerFlash is restarting…');
-        label.textContent = 'Done';
-      } else if (data.status === 'error') {
-        setStatus('Update failed', 'error');
-        setDetail(data.message || 'An error occurred');
-        label.textContent = 'Error';
-      }
-    });
-
-    window.callerflashUpdater?.onVersion?.(function(data) {
-      setLatestVersion(data.latest);
-    });
-  </script>
-</body>
-</html>`;
-}
-
-// ── Create updater window ──────────────────────────────────────────────
-function createUpdaterWindow(mainWindow) {
-  if (updaterWindow && !updaterWindow.isDestroyed()) return updaterWindow;
-
-  let posX = null, posY = null;
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    const [x, y] = mainWindow.getPosition();
-    const [w, h] = mainWindow.getSize();
-    posX = Math.round(x + (w / 2) - 170);
-    posY = Math.round(y + (h * 0.2) - 160);
-    const { screen } = require('electron');
-    const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
-    posX = Math.max(8, Math.min(posX, screenW - 348));
-    posY = Math.max(8, Math.min(posY, screenH - 468));
-  }
-
-  updaterWindow = new BrowserWindow({
-    width: 340,
-    height: 496,
-    frame: false,
-    resizable: false,
-    maximizable: false,
-    minimizable: false,
-    show: false,
-    fullscreenable: false,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    backgroundColor: '#0d0d0d',
-    icon: loadAppIcon(),
-    x: posX ?? undefined,
-    y: posY ?? undefined,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      preload: path.join(__dirname, 'updaterPreload.cjs'),
-    },
-  });
-
-  if (posX == null) updaterWindow.center();
-
-  updaterWindow.on('close', (event) => {
-    if (!updaterCanClose) { event.preventDefault(); return; }
-    updaterWindow = null;
-  });
-
-  updaterWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(buildUpdaterHtml(loadAppIconDataURL()))}`);
-  updaterWindow.once('ready-to-show', () => {
-    updaterWindow.show();
-    updaterWindow.setAlwaysOnTop(true, 'screen-saver');
-    updaterWindow.focus();
-  });
-
-  return updaterWindow;
-}
-
-// ── Public API ─────────────────────────────────────────────────────────
-
+// ── Check for updates ──────────────────────────────────────────────────
 async function checkForUpdates(channel) {
-  try {
-    const apiUrl = 'https://api.github.com/repos/jaydenrussell/CallerFlash/releases';
-    console.log('[updater] checking channel:', channel);
-    const releases = await fetchJson(apiUrl);
-    if (!Array.isArray(releases)) return { error: 'Invalid response from GitHub' };
+  log('checking channel:', channel);
 
-    const release = findReleaseForChannel(releases, channel);
-    if (!release) {
-      console.log('[updater] no release found for channel:', channel);
-      return { upToDate: true, version: app.getVersion() };
-    }
+  const releases = await fetchJson('https://api.github.com/repos/jaydenrussell/CallerFlash/releases');
+  if (!Array.isArray(releases)) return { error: 'Invalid GitHub response' };
 
-    const version = release.tag_name.replace(/^v/, '');
-    const currentVersion = app.getVersion().replace(/^v/, '');
-    const releaseDate = new Date(release.published_at || release.created_at);
-
-    console.log('[updater] found release:', version, 'date:', releaseDate.toISOString(), 'current:', currentVersion);
-
-    // For stable channel, use semver comparison
-    if (channel === 'stable') {
-      if (compareVersions(version, currentVersion) <= 0) {
-        return { upToDate: true, version };
-      }
-    } else {
-      // For beta/nightly: compare by release date
-      const buildTimestamp = getBuildTimestamp();
-
-      // If the release is newer than our build, it's an update
-      if (releaseDate.getTime() <= buildTimestamp) {
-        console.log('[updater] release is older than or equal to current build, skipping');
-        return { upToDate: true, version: currentVersion };
-      }
-
-      // Also check if the version string matches (for same-day builds)
-      const nightlyDateMatch = version.match(/(\d{8})/);
-      const currentDateMatch = currentVersion.match(/(\d{8})/);
-      if (nightlyDateMatch && currentDateMatch && nightlyDateMatch[1] === currentDateMatch[1]) {
-        const nightlyBuild = parseInt(version.match(/-(\d+)$/)?.[1] || '0', 10);
-        const currentBuild = parseInt(currentVersion.match(/-(\d+)$/)?.[1] || '0', 10);
-        if (nightlyBuild <= currentBuild) {
-          return { upToDate: true, version: currentVersion };
-        }
-      }
-    }
-
-    const exeDlUrl = getExeDownloadUrl(release);
-    console.log('[updater] update available:', version, 'exe:', exeDlUrl);
-
-    return {
-      version,
-      friendlyName: friendlyVersion(version),
-      releaseNotes: release.body || '',
-      downloadUrl: exeDlUrl,
-      htmlUrl: release.html_url,
-    };
-  } catch (err) {
-    console.error('[updater] check failed:', err.message);
-    return { error: err.message };
+  const release = findRelease(releases, channel);
+  if (!release) {
+    log('no release for channel:', channel);
+    return { upToDate: true, version: app.getVersion() };
   }
+
+  const version = release.tag_name.replace(/^v/, '');
+  const currentVersion = app.getVersion();
+  const releaseDate = new Date(release.published_at || release.created_at);
+
+  log('found:', version, 'published:', releaseDate.toISOString(), 'current:', currentVersion);
+
+  // Compare by release date for non-stable channels
+  if (channel !== 'stable') {
+    let buildTime = Date.now();
+    try { buildTime = fs.statSync(process.execPath).mtimeMs; } catch {}
+
+    if (releaseDate.getTime() <= buildTime) {
+      log('release is same or older than current build → up to date');
+      return { upToDate: true, version: currentVersion };
+    }
+  } else {
+    // Stable: simple semver compare
+    const remote = version.replace(/[-+].*/, '').split('.').map(Number);
+    const local = currentVersion.replace(/[-+].*/, '').split('.').map(Number);
+    let newer = false;
+    for (let i = 0; i < 3; i++) {
+      const r = remote[i] || 0, l = local[i] || 0;
+      if (r > l) { newer = true; break; }
+      if (r < l) break;
+    }
+    if (!newer) return { upToDate: true, version: currentVersion };
+  }
+
+  const downloadUrl = getExeUrl(release);
+  return {
+    version,
+    friendlyName: friendlyVersion(version),
+    downloadUrl,
+    releaseDate: releaseDate.toISOString(),
+  };
 }
 
-// ── Get the build timestamp of the running app ───────────────────────
-function getBuildTimestamp() {
-  // Use build timestamp injected at build time
-  if (typeof __APP_BUILD_TIMESTAMP__ === 'number') {
-    return __APP_BUILD_TIMESTAMP__;
-  }
-  // Fallback: use the executable's modification time
-  try {
-    const fs = require('fs');
-    const stat = fs.statSync(process.execPath);
-    return stat.mtimeMs;
-  } catch {
-    return 0;
-  }
-}
-
+// ── Download update ────────────────────────────────────────────────────
 async function downloadUpdate(channel, version, downloadUrl) {
-  if (currentDownload) return { status: 'already-downloading' };
+  if (activeDownload) { log('download already in progress'); return { status: 'busy' }; }
 
-  const filePath = filePathFor(version);
-  if (fs.existsSync(filePath)) {
-    sendUpdaterStatus({ status: 'ready', message: 'Update already downloaded' });
-    return { status: 'ready', filePath };
+  const destPath = exePathFor(version);
+
+  // Already downloaded?
+  if (fs.existsSync(destPath)) {
+    log('already downloaded:', destPath);
+    sendStatus({ status: 'ready' });
+    return { status: 'ready', path: destPath };
   }
 
-  let url = downloadUrl;
-  if (!url) {
-    url = `https://github.com/jaydenrussell/CallerFlash/releases/download/v${version}/CallerFlash-Setup-${version}.exe`;
+  if (!downloadUrl) {
+    log('ERROR: no download URL provided');
+    sendStatus({ status: 'error', message: 'No download URL' });
+    return { status: 'error', error: 'No URL' };
   }
 
-  cleanupOldDownloads(version);
-  console.log('[updater] downloading:', url);
-  sendUpdaterStatus({ status: 'downloading', message: 'Connecting to GitHub…' });
+  // Clean old downloads
+  try {
+    for (const f of fs.readdirSync(downloadsDir())) {
+      if (f.endsWith('.exe') && !f.includes(version)) {
+        fs.unlinkSync(path.join(downloadsDir(), f));
+      }
+    }
+  } catch {}
+
+  log('downloading:', downloadUrl, '→', destPath);
+  sendStatus({ status: 'downloading', message: 'Connecting…' });
 
   try {
-    currentDownload = { filePath, version, channel };
-    await downloadFile(url, filePath, (percent, received, total) => {
-      sendUpdaterProgress({ percent, bytesTransferred: received, total });
+    await new Promise((resolve, reject) => {
+      const parsed = new URL(downloadUrl);
+      const transport = parsed.protocol === 'https:' ? https : http;
+      const file = fs.createWriteStream(destPath);
+
+      const req = transport.get(downloadUrl, {
+        headers: { 'User-Agent': 'CallerFlash-Updater' },
+      }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          // Follow redirect
+          downloadUpdate(channel, version, res.headers.location).then(resolve).catch(reject);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          file.close();
+          return reject(new Error(`HTTP ${res.statusCode}`));
+        }
+
+        const total = parseInt(res.headers['content-length'] || '0', 10);
+        let received = 0;
+
+        res.on('data', (chunk) => {
+          received += chunk.length;
+          const pct = total > 0 ? Math.round((received / total) * 100) : 0;
+          sendProgress({ pct, received, total });
+        });
+
+        res.pipe(file);
+        file.on('finish', () => {
+          file.close();
+          resolve();
+        });
+      });
+
+      req.on('error', reject);
+      req.setTimeout(120000, () => { req.destroy(new Error('Download timeout')); });
     });
-    currentDownload = null;
-    cleanupOldDownloads(version);
-    sendUpdaterStatus({ status: 'ready', message: 'Download complete' });
-    return { status: 'ready', filePath };
+
+    activeDownload = null;
+    log('download complete:', destPath);
+    sendStatus({ status: 'ready' });
+    return { status: 'ready', path: destPath };
   } catch (err) {
-    currentDownload = null;
-    console.error('[updater] download failed:', err.message);
-    try { fs.unlinkSync(filePath); } catch {}
-    sendUpdaterStatus({ status: 'error', message: err.message });
+    activeDownload = null;
+    logErr('download failed:', err.message);
+    try { fs.unlinkSync(destPath); } catch {}
+    sendStatus({ status: 'error', message: err.message });
     return { status: 'error', error: err.message };
   }
 }
 
+// ── Install update ─────────────────────────────────────────────────────
 function installUpdate(version) {
-  const filePath = filePathFor(version);
-  if (!fs.existsSync(filePath)) {
-    sendUpdaterStatus({ status: 'error', message: 'Update file not found. Please download again.' });
-    return { status: 'error', error: 'File not found' };
+  const exePath = exePathFor(version);
+  if (!fs.existsSync(exePath)) {
+    sendStatus({ status: 'error', message: 'File not found. Download again.' });
+    return { status: 'error' };
   }
 
-  sendUpdaterStatus({ status: 'installing', message: 'Preparing installer…' });
+  sendStatus({ status: 'installing', message: 'Starting installer…' });
 
-  // Spawn the updater helper — a separate process that will:
-  // 1. Wait for this app to exit
-  // 2. Run the NSIS installer
-  // 3. Relaunch the app
+  // Spawn helper process that waits for us to exit, then runs NSIS
   const helperPath = path.join(__dirname, 'updater-helper.cjs');
-  const appPath = process.execPath;
-  const installDir = path.dirname(appPath);
+  const appExe = process.execPath;
+  const installDir = path.dirname(appExe);
 
-  const helper = spawn(process.execPath, [
-    helperPath,
-    '--installer', filePath,
-    '--app', appPath,
-    '--dir', installDir,
-    '--pid', String(process.pid),
-  ], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-  });
-  helper.unref();
+  log('spawning helper:', helperPath);
+  log('  installer:', exePath);
+  log('  app:', appExe);
+  log('  dir:', installDir);
+  log('  pid:', process.pid);
 
-  // Quit the app — the helper will take over
+  try {
+    const helper = spawn(process.execPath, [
+      helperPath,
+      '--installer', exePath,
+      '--app', appExe,
+      '--dir', installDir,
+      '--pid', String(process.pid),
+    ], { detached: true, stdio: 'ignore', windowsHide: true });
+    helper.unref();
+  } catch (err) {
+    logErr('failed to spawn helper:', err.message);
+    sendStatus({ status: 'error', message: 'Failed to start installer' });
+    return { status: 'error' };
+  }
+
+  // Quit after a delay
   setTimeout(() => {
     updaterCanClose = true;
     app.quit();
-  }, 1000);
+  }, 1500);
 
   return { status: 'installing' };
 }
 
+// ── Updater progress window ────────────────────────────────────────────
+function showUpdaterWindow() {
+  if (updaterWindow && !updaterWindow.isDestroyed()) {
+    updaterWindow.show();
+    updaterWindow.focus();
+    return;
+  }
+
+  let x, y;
+  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+    const [wx, wy] = mainWindowRef.getPosition();
+    const [ww, wh] = mainWindowRef.getSize();
+    x = Math.round(wx + ww / 2 - 170);
+    y = Math.round(wy + wh * 0.2 - 160);
+  }
+
+  updaterWindow = new BrowserWindow({
+    width: 340, height: 420,
+    frame: false, resizable: false, maximizable: false, minimizable: false,
+    show: false, alwaysOnTop: true, skipTaskbar: true,
+    backgroundColor: '#0d0d0d', icon: loadAppIcon(),
+    x, y,
+    webPreferences: {
+      nodeIntegration: false, contextIsolation: true, sandbox: true,
+      preload: path.join(__dirname, 'updaterPreload.cjs'),
+    },
+  });
+
+  updaterWindow.on('close', (e) => { if (!updaterCanClose) e.preventDefault(); });
+  updaterWindow.loadURL(`data:text/html;base64,${getUpdaterHtml()}`);
+  updaterWindow.once('ready-to-show', () => { updaterWindow.show(); updaterWindow.focus(); });
+}
+
+// ── Inline HTML for updater window ─────────────────────────────────────
+function getUpdaterHtml() {
+  return Buffer.from(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100vw;height:100vh;background:#0d0d0d;font-family:'Segoe UI',system-ui,sans-serif;color:#f0f0f0;overflow:hidden}
+.title-bar{height:36px;display:flex;align-items:center;justify-content:center;position:relative;-webkit-app-region:drag;flex-shrink:0}
+.title-bar .title{font-size:11px;color:rgba(255,255,255,0.45);font-weight:500}
+.title-bar .close{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:8px;border:none;background:transparent;color:rgba(255,255,255,0.45);cursor:pointer;-webkit-app-region:no-drag}
+.title-bar .close:hover{background:#ff6b6b;color:#fff}
+.frame{width:340px;height:384px;background:#181818;border-radius:0 0 48px 48px;border:1px solid rgba(255,255,255,0.06);border-top:none;padding:24px 32px;display:flex;flex-direction:column;align-items:center;position:absolute;top:36px;left:50%;transform:translateX(-50%)}
+.logo{width:56px;height:56px;border-radius:16px;padding:10px;background:rgba(96,205,255,0.1);border:1px solid rgba(96,205,255,0.18);display:grid;place-items:center;margin-bottom:16px}
+.ring{position:relative;width:80px;height:80px;margin-bottom:12px}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .track{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:4}
+.ring .fill{fill:none;stroke:#60cdff;stroke-width:4;stroke-linecap:round;stroke-dasharray:226.19;stroke-dashoffset:226.19;transition:stroke-dashoffset .4s ease}
+.ring .fill.indeterminate{animation:spin 1.4s linear infinite;stroke-dashoffset:57}
+@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+.ring .center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+.ring .pct{font-size:16px;font-weight:700}
+.ring .lbl{font-size:8px;color:rgba(255,255,255,0.45);text-transform:uppercase}
+.status{font-size:13px;font-weight:600;text-align:center;margin-bottom:4px;min-height:18px}
+.status.success{color:#6ccb5f}
+.status.error{color:#ff6b6b}
+.detail{font-size:11px;color:rgba(255,255,255,0.45);text-align:center}
+.version{margin-top:auto;font-size:11px;color:rgba(255,255,255,0.45);text-align:center}
+</style></head><body>
+<div class="title-bar"><span class="title">CallerFlash Update</span><button class="close" id="close">✕</button></div>
+<div class="frame">
+<div class="logo">📞</div>
+<div class="ring"><svg viewBox="0 0 80 80"><circle class="track" cx="40" cy="40" r="36"/><circle class="fill indeterminate" id="fill" cx="40" cy="40" r="36" style="transform-origin:center"/></svg><div class="center"><div class="pct" id="pct">—</div><div class="lbl" id="lbl">Waiting</div></div></div>
+<div class="status" id="status"></div>
+<div class="detail" id="detail"></div>
+<div class="version" id="version">v${app.getVersion()}</div>
+</div>
+<script>
+const fill=document.getElementById('fill'),pct=document.getElementById('pct'),lbl=document.getElementById('lbl');
+const statusEl=document.getElementById('status'),detailEl=document.getElementById('detail');
+const CIRC=2*Math.PI*36;
+function setProgress(p){fill.classList.remove('indeterminate');fill.style.transform='none';fill.style.strokeDashoffset=CIRC*(1-p/100);pct.textContent=Math.round(p)+'%';lbl.textContent='Downloading'}
+function setSpin(){fill.classList.add('indeterminate');pct.textContent='—';lbl.textContent='Working'}
+document.getElementById('close').addEventListener('click',()=>window.close());
+window.callerflashUpdater&&window.callerflashUpdater.onProgress(d=>{if(d.pct>0)setProgress(d.pct)});
+window.callerflashUpdater&&window.callerflashUpdater.onStatus(d=>{
+if(d.status==='downloading'){statusEl.textContent='Downloading...';statusEl.className='status';setSpin()}
+else if(d.status==='ready'){statusEl.textContent='Ready to install';statusEl.className='status success';lbl.textContent='Done';fill.classList.remove('indeterminate');fill.style.strokeDashoffset=0;pct.textContent='100%'}
+else if(d.status==='installing'){statusEl.textContent='Installing...';statusEl.className='status';lbl.textContent='Installing'}
+else if(d.status==='error'){statusEl.textContent='Failed';statusEl.className='status error';detailEl.textContent=d.message||'Error'}
+});
+</script></body></html>`).toString('base64');
+}
+
+// ── IPC handlers ───────────────────────────────────────────────────────
 function initUpdaterIPC(mainWindow) {
   mainWindowRef = mainWindow;
 
-  ipcMain.handle('updater:check', async (_event, channel) => {
-    const ch = channel || 'stable';
-    const result = await checkForUpdates(ch);
-    if (result?.version && updaterWindow && !updaterWindow.isDestroyed()) {
-      updaterWindow.webContents.send('updater:version', {
-        current: 'v' + app.getVersion(),
-        latest: result.friendlyName || friendlyVersion(result.version),
-      });
-    }
+  ipcMain.handle('updater:check', async (_e, channel) => {
+    const result = await checkForUpdates(channel || 'stable');
     return result || { upToDate: true };
   });
 
-  ipcMain.on('updater:download', (_event, { channel, version, downloadUrl }) => {
-    downloadUpdate(channel, version, downloadUrl);
+  ipcMain.on('updater:download', async (_e, { channel, version, downloadUrl }) => {
+    log('download requested:', channel, version, downloadUrl?.substring(0, 60));
+    showUpdaterWindow();
+    await downloadUpdate(channel, version, downloadUrl);
   });
 
-  ipcMain.on('updater:install', (_event, { version }) => {
-    console.log('[updater] install requested for', version);
+  ipcMain.on('updater:install', (_e, { version }) => {
+    log('install requested:', version);
     installUpdate(version);
   });
 
-  ipcMain.on('updater:show', () => {
-    createUpdaterWindow(mainWindow);
-  });
-
-  ipcMain.on('updater:set-channel', (_event, channel) => {
-    // Channel is now passed per-request, no module state needed
-  });
-
-  ipcMain.handle('updater:background-check', async (_event, { channel }) => {
-    const result = await checkForUpdates(channel);
-    return result || { upToDate: true };
-  });
+  ipcMain.on('updater:show', () => showUpdaterWindow());
 }
 
-module.exports = {
-  initUpdaterIPC,
-  checkForUpdates,
-  downloadUpdate,
-  installUpdate,
-  friendlyVersion,
-};
+module.exports = { initUpdaterIPC };
