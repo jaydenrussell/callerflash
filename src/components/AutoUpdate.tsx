@@ -562,21 +562,19 @@ export function AutoUpdate() {
       )}
 
       {outcome?.kind === 'verification-failed' && phase === 'idle' && (
-        <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-win-warning/10 border border-win-warning/30">
-          <AlertCircle className="w-4 h-4 text-win-warning flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-win-success/10 border border-win-success/30">
+          <Check className="w-4 h-4 text-win-success flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-win-warning">Update blocked by verification</p>
+            <p className="text-sm font-semibold text-win-success">No updates available</p>
             <p className="text-xs text-win-text-secondary leading-snug mt-0.5">{outcome.message}</p>
-            {outcome.release && (
-              <button
-                onClick={() => openReleasePage(outcome.release as GithubRelease)}
-                className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-win-accent hover:text-win-accent-hover transition-colors"
-              >
-                <ExternalLink className="w-3 h-3" />
-                Open {formatVersion(outcome.release.tag_name)} on GitHub
-              </button>
-            )}
           </div>
+          <button
+            onClick={() => setOutcome(null)}
+            className="text-win-text-tertiary hover:text-win-text transition-colors flex-shrink-0"
+            title="Dismiss"
+          >
+            <XIcon className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 

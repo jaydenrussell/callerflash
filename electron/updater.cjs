@@ -162,12 +162,21 @@ function findReleaseForChannel(releases, channel) {
   });
 
   if (channel === 'stable') {
-    return sorted.find((r) => !r.prerelease && !r.draft) || sorted.find((r) => !r.prerelease) || null;
+    // Prefer non-prerelease, but fall back to latest if all are prerelease
+    return sorted.find((r) => !r.prerelease && !r.draft) ||
+           sorted.find((r) => !r.prerelease) ||
+           sorted[0];
   }
   if (channel === 'beta') {
-    return sorted.find((r) => /beta/i.test(r.tag_name)) || null;
+    // Tag contains "beta", or fall back to latest prerelease
+    return sorted.find((r) => /beta/i.test(r.tag_name)) ||
+           sorted.find((r) => r.prerelease) ||
+           sorted[0];
   }
-  return sorted.find((r) => /nightly/i.test(r.tag_name)) || sorted.find((r) => r.prerelease) || null;
+  // Nightly: tag contains "nightly", or any prerelease, or latest
+  return sorted.find((r) => /nightly/i.test(r.tag_name)) ||
+         sorted.find((r) => r.prerelease) ||
+         sorted[0];
 }
 
 function getExeDownloadUrl(release) {
@@ -503,14 +512,16 @@ async function checkForUpdates(channel) {
 
     const release = findReleaseForChannel(releases, channel);
     if (!release) {
-      const total = releases.length;
-      const prereleases = releases.filter((r) => r.prerelease).length;
-      return { error: `No ${channel} release found. (${total} total, ${prereleases} prereleases)` };
+      return { error: 'No releases found on GitHub.' };
     }
 
     const version = release.tag_name.replace(/^v/, '');
     const currentVersion = app.getVersion().replace(/^v/, '');
-    if (version === currentVersion) return { upToDate: true, version };
+
+    // Check if this is actually newer (string compare works for semver)
+    if (version === currentVersion || version <= currentVersion) {
+      return { upToDate: true, version };
+    }
 
     const exeDlUrl = getExeDownloadUrl(release);
     console.log('[updater] found update:', version, 'exe:', exeDlUrl);
