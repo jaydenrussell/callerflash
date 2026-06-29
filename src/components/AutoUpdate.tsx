@@ -189,6 +189,7 @@ export function AutoUpdate() {
   const [verifiedArtifact, setVerifiedArtifact] = useState<UpdateArtifact | null>(null);
   const [downloadedBlobUrl, setDownloadedBlobUrl] = useState<string | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
 
   // The displayed list — strictly filtered by the active channel,
@@ -344,6 +345,7 @@ export function AutoUpdate() {
       const result = await window.callerflash.updater.check(updateInfo.updateChannel);
       if (result?.version) {
         setUpdateInfo({ latestVersion: result.version, updateAvailable: true });
+        setDownloadUrl(result.downloadUrl); // Store for later download
         addDiagnosticLog({
           level: 'info',
           category: 'UPDATE',
@@ -486,7 +488,7 @@ export function AutoUpdate() {
     });
 
     if (window.callerflash?.updater?.download) {
-      window.callerflash.updater.download(updateInfo.updateChannel, updateInfo.latestVersion);
+      window.callerflash.updater.download(updateInfo.updateChannel, updateInfo.latestVersion, downloadUrl);
       setPhase('downloading');
       setUpdateInfo({ isDownloading: true });
     }

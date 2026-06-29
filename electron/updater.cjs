@@ -538,25 +538,36 @@ function createUpdaterWindow(mainWindow) {
 async function checkForUpdates(channel) {
   try {
     const apiUrl = 'https://api.github.com/repos/jaydenrussell/CallerFlash/releases';
-    console.log('[updater] checking:', apiUrl);
+    console.log('[updater] checking channel:', channel);
     const releases = await fetchJson(apiUrl);
     if (!Array.isArray(releases)) return { error: 'Invalid response from GitHub' };
 
     const release = findReleaseForChannel(releases, channel);
     if (!release) {
-      return { error: 'No releases found on GitHub.' };
+      console.log('[updater] no release found for channel:', channel);
+      return { upToDate: true, version: app.getVersion() };
     }
 
     const version = release.tag_name.replace(/^v/, '');
     const currentVersion = app.getVersion().replace(/^v/, '');
 
-    // Only report update if remote version is actually newer
-    if (compareVersions(version, currentVersion) <= 0) {
-      return { upToDate: true, version };
+    console.log('[updater] found release:', version, 'current:', currentVersion);
+
+    // For stable channel, use semver comparison
+    if (channel === 'stable') {
+      if (compareVersions(version, currentVersion) <= 0) {
+        return { upToDate: true, version };
+      }
+    } else {
+      // For beta/nightly: offer update if version string differs at all
+      // (these channels always want the latest)
+      if (version === currentVersion) {
+        return { upToDate: true, version };
+      }
     }
 
     const exeDlUrl = getExeDownloadUrl(release);
-    console.log('[updater] found update:', version, 'exe:', exeDlUrl);
+    console.log('[updater] update available:', version, 'exe:', exeDlUrl);
 
     return {
       version,
