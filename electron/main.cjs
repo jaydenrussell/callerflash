@@ -176,12 +176,13 @@ function createWindow() {
 
 // ── Window icon (taskbar, titlebar, Alt+Tab) ────────────────────────
 function loadWindowIcon() {
+  // Use the app.ico (generated from tray-icon.png) for consistency
   const resPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
   const candidates = [
+    path.join(resPath, 'app.ico'),
+    path.join(__dirname, '../buildResources/app.ico'),
     path.join(resPath, 'cflogo.ico'),
     path.join(__dirname, '../buildResources/cflogo.ico'),
-    path.join(resPath, 'cflogo.png'),
-    path.join(__dirname, '../buildResources/cflogo.png'),
   ];
   for (const iconPath of candidates) {
     try {

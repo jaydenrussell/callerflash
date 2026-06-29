@@ -25,7 +25,7 @@ asarUnpack:
   - buildResources/**
 
 win:
-  icon: build/cflogo.ico
+  icon: buildResources/app.ico
   target:
     - target: nsis
       arch:
