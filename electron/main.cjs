@@ -176,20 +176,32 @@ function createWindow() {
 
 // ── Window icon (taskbar, titlebar, Alt+Tab) ────────────────────────
 function loadWindowIcon() {
-  // Use the app.ico (generated from tray-icon.png) for consistency
+  // Use the CallerFlash ICO for consistency across taskbar, titlebar, Alt+Tab.
+  // In a packaged build, extraResources copies icons directly into process.resourcesPath.
+  // In asarUnpack mode they may also appear under resourcesPath/buildResources/.
+  // In dev mode, they live in the source buildResources/ directory.
   const resPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
   const candidates = [
+    // Packaged: extraResources places app.ico / cflogo.ico at the resources root
     path.join(resPath, 'app.ico'),
-    path.join(__dirname, '../buildResources/app.ico'),
     path.join(resPath, 'cflogo.ico'),
-    path.join(__dirname, '../buildResources/cflogo.ico'),
+    // Packaged: asarUnpack may place them under buildResources/
+    path.join(resPath, 'buildResources', 'app.ico'),
+    path.join(resPath, 'buildResources', 'cflogo.ico'),
+    // Dev mode: relative to the electron/ source directory
+    path.join(__dirname, '..', 'buildResources', 'app.ico'),
+    path.join(__dirname, '..', 'buildResources', 'cflogo.ico'),
   ];
   for (const iconPath of candidates) {
     try {
       const img = nativeImage.createFromPath(iconPath);
-      if (!img.isEmpty()) return img;
+      if (!img.isEmpty()) {
+        console.log('[icon] Loaded window icon from:', iconPath);
+        return img;
+      }
     } catch { /* continue */ }
   }
+  console.warn('[icon] No window icon found, using empty image');
   return nativeImage.createEmpty();
 }
 
@@ -201,20 +213,30 @@ function loadTrayIcon() {
   // then fall back to the source-tree location (dev mode).
   const resPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
   const candidates = [
+    // Packaged: extraResources places icons at the resources root
     path.join(resPath, 'cflogo.ico'),
     path.join(resPath, 'cflogo.png'),
-    path.join(__dirname, '../buildResources/cflogo.ico'),
-    path.join(__dirname, '../buildResources/cflogo.png'),
-    path.join(__dirname, '../buildResources/tray-icon.png'),
+    // Packaged: asarUnpack may place them under buildResources/
+    path.join(resPath, 'buildResources', 'cflogo.ico'),
+    path.join(resPath, 'buildResources', 'cflogo.png'),
+    path.join(resPath, 'buildResources', 'tray-icon.png'),
+    // Dev mode: relative to the electron/ source directory
+    path.join(__dirname, '..', 'buildResources', 'cflogo.ico'),
+    path.join(__dirname, '..', 'buildResources', 'cflogo.png'),
+    path.join(__dirname, '..', 'buildResources', 'tray-icon.png'),
   ];
   for (const iconPath of candidates) {
     try {
       const img = nativeImage.createFromPath(iconPath);
-      if (!img.isEmpty()) return img;
+      if (!img.isEmpty()) {
+        console.log('[icon] Loaded tray icon from:', iconPath);
+        return img;
+      }
     } catch {
       // Continue to next candidate
     }
   }
+  console.warn('[icon] No tray icon found, using empty image');
   // Last-resort: empty image. The tray will still appear but without art.
   return nativeImage.createEmpty();
 }

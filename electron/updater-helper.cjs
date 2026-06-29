@@ -43,10 +43,18 @@ function createProgressWindow() {
   const iconPath = (() => {
     const resPath = process.resourcesPath || '';
     for (const p of [
-      path.join(resPath, 'cflogo.png'),
+      // Packaged: extraResources places icons at resources root
       path.join(resPath, 'cflogo.ico'),
-      path.join(__dirname, '../buildResources/cflogo.png'),
-      path.join(__dirname, '../buildResources/cflogo.ico'),
+      path.join(resPath, 'cflogo.png'),
+      path.join(resPath, 'app.ico'),
+      // asarUnpack: may be under buildResources/
+      path.join(resPath, 'buildResources', 'cflogo.ico'),
+      path.join(resPath, 'buildResources', 'cflogo.png'),
+      path.join(resPath, 'buildResources', 'app.ico'),
+      // Dev mode
+      path.join(__dirname, '..', 'buildResources', 'cflogo.ico'),
+      path.join(__dirname, '..', 'buildResources', 'cflogo.png'),
+      path.join(__dirname, '..', 'buildResources', 'app.ico'),
     ]) {
       try {
         if (fs.existsSync(p)) return p;

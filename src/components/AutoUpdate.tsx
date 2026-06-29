@@ -118,7 +118,7 @@ function matchesChannel(
   if (channel === 'stable') return !release.prerelease;
   const tag = release.tag_name;
   if (channel === 'beta') return /-beta(\.|$)/.test(tag);
-  if (channel === 'nightly') return /^v?nightly[.\-]\d{8}(?:[.\-]\d+)?$/i.test(tag);
+  if (channel === 'nightly') return /^v?(?:0\.0\.0-)?nightly[.\-]\d{8}(?:[.\-]\d+)?$/i.test(tag);
   return false;
 }
 

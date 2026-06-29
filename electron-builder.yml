@@ -5,7 +5,7 @@ productName: CallerFlash
 
 directories:
   output: release
-  buildResources: build
+  buildResources: buildResources
 
 files:
   - dist/**/*
@@ -25,7 +25,7 @@ asarUnpack:
   - buildResources/**
 
 win:
-  icon: buildResources/app.ico
+  icon: app.ico
   target:
     - target: nsis
       arch:
@@ -67,9 +67,9 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: CallerFlash
-  installerIcon: build/cflogo.ico
-  uninstallerIcon: build/cflogo.ico
-  installerHeaderIcon: build/cflogo.ico
+  installerIcon: cflogo.ico
+  uninstallerIcon: cflogo.ico
+  installerHeaderIcon: cflogo.ico
   runAfterFinish: true
 
 # Publish config — required for electron-builder to generate the
@@ -83,7 +83,9 @@ publish:
   repo: CallerFlash
 
 extraResources:
-  - from: build/cflogo.ico
+  - from: buildResources/cflogo.ico
     to: cflogo.ico
-  - from: build/cflogo.png
+  - from: buildResources/cflogo.png
     to: cflogo.png
+  - from: buildResources/app.ico
+    to: app.ico

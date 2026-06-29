@@ -51,6 +51,9 @@
       "dist/**/*",
       "electron/**/*"
     ],
+    "asarUnpack": [
+      "buildResources/**"
+    ],
     "artifactName": "CallerFlash-${version}.${ext}",
     "win": {
       "target": [
@@ -61,7 +64,7 @@
           ]
         }
       ],
-      "icon": "buildResources/icon.ico"
+      "icon": "app.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -71,9 +74,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "CallerFlash",
-      "installerIcon": "buildResources/cflogo.ico",
-      "uninstallerIcon": "buildResources/cflogo.ico",
-      "installerHeaderIcon": "buildResources/cflogo.ico",
+      "installerIcon": "cflogo.ico",
+      "uninstallerIcon": "cflogo.ico",
+      "installerHeaderIcon": "cflogo.ico",
       "runAfterFinish": true
     },
     "publish": null,
@@ -85,6 +88,10 @@
       {
         "from": "buildResources/cflogo.png",
         "to": "cflogo.png"
+      },
+      {
+        "from": "buildResources/app.ico",
+        "to": "app.ico"
       }
     ],
     "linux": {
