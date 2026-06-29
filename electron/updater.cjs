@@ -337,54 +337,60 @@ function showUpdaterWindow() {
 
 // ── Inline HTML for updater window ─────────────────────────────────────
 function getUpdaterHtml() {
-  return Buffer.from(`<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><style>
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100vw;height:100vh;background:#0d0d0d;font-family:'Segoe UI',system-ui,sans-serif;color:#f0f0f0;overflow:hidden}
-.title-bar{height:36px;display:flex;align-items:center;justify-content:center;position:relative;-webkit-app-region:drag;flex-shrink:0}
-.title-bar .title{font-size:11px;color:rgba(255,255,255,0.45);font-weight:500}
-.title-bar .close{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:8px;border:none;background:transparent;color:rgba(255,255,255,0.45);cursor:pointer;-webkit-app-region:no-drag}
-.title-bar .close:hover{background:#ff6b6b;color:#fff}
-.frame{width:340px;height:384px;background:#181818;border-radius:0 0 48px 48px;border:1px solid rgba(255,255,255,0.06);border-top:none;padding:24px 32px;display:flex;flex-direction:column;align-items:center;position:absolute;top:36px;left:50%;transform:translateX(-50%)}
-.logo{width:56px;height:56px;border-radius:16px;padding:10px;background:rgba(96,205,255,0.1);border:1px solid rgba(96,205,255,0.18);display:grid;place-items:center;margin-bottom:16px}
-.ring{position:relative;width:80px;height:80px;margin-bottom:12px}
-.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
-.ring .track{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:4}
-.ring .fill{fill:none;stroke:#60cdff;stroke-width:4;stroke-linecap:round;stroke-dasharray:226.19;stroke-dashoffset:226.19;transition:stroke-dashoffset .4s ease}
-.ring .fill.indeterminate{animation:spin 1.4s linear infinite;stroke-dashoffset:57}
-@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
-.ring .center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
-.ring .pct{font-size:16px;font-weight:700}
-.ring .lbl{font-size:8px;color:rgba(255,255,255,0.45);text-transform:uppercase}
-.status{font-size:13px;font-weight:600;text-align:center;margin-bottom:4px;min-height:18px}
-.status.success{color:#6ccb5f}
-.status.error{color:#ff6b6b}
-.detail{font-size:11px;color:rgba(255,255,255,0.45);text-align:center}
-.version{margin-top:auto;font-size:11px;color:rgba(255,255,255,0.45);text-align:center}
-</style></head><body>
-<div class="title-bar"><span class="title">CallerFlash Update</span><button class="close" id="close">✕</button></div>
-<div class="frame">
-<div class="logo">📞</div>
-<div class="ring"><svg viewBox="0 0 80 80"><circle class="track" cx="40" cy="40" r="36"/><circle class="fill indeterminate" id="fill" cx="40" cy="40" r="36" style="transform-origin:center"/></svg><div class="center"><div class="pct" id="pct">—</div><div class="lbl" id="lbl">Waiting</div></div></div>
-<div class="status" id="status"></div>
-<div class="detail" id="detail"></div>
-<div class="version" id="version">v${app.getVersion()}</div>
-</div>
-<script>
-const fill=document.getElementById('fill'),pct=document.getElementById('pct'),lbl=document.getElementById('lbl');
-const statusEl=document.getElementById('status'),detailEl=document.getElementById('detail');
-const CIRC=2*Math.PI*36;
-function setProgress(p){fill.classList.remove('indeterminate');fill.style.transform='none';fill.style.strokeDashoffset=CIRC*(1-p/100);pct.textContent=Math.round(p)+'%';lbl.textContent='Downloading'}
-function setSpin(){fill.classList.add('indeterminate');pct.textContent='—';lbl.textContent='Working'}
-document.getElementById('close').addEventListener('click',()=>window.close());
-window.callerflashUpdater&&window.callerflashUpdater.onProgress(d=>{if(d.pct>0)setProgress(d.pct)});
-window.callerflashUpdater&&window.callerflashUpdater.onStatus(d=>{
-if(d.status==='downloading'){statusEl.textContent='Downloading...';statusEl.className='status';setSpin()}
-else if(d.status==='ready'){statusEl.textContent='Ready to install';statusEl.className='status success';lbl.textContent='Done';fill.classList.remove('indeterminate');fill.style.strokeDashoffset=0;pct.textContent='100%'}
-else if(d.status==='installing'){statusEl.textContent='Installing...';statusEl.className='status';lbl.textContent='Installing'}
-else if(d.status==='error'){statusEl.textContent='Failed';statusEl.className='status error';detailEl.textContent=d.message||'Error'}
-});
-</script></body></html>`).toString('base64');
+  // Get app icon as data URL for embedding
+  let iconDataUrl = '';
+  try {
+    const fs = require('fs');
+    const resPath = process.resourcesPath || '';
+    for (const p of [
+      path.join(resPath, 'cflogo.png'),
+      path.join(__dirname, '../buildResources/cflogo.png'),
+    ]) {
+      if (fs.existsSync(p)) {
+        iconDataUrl = 'data:image/png;base64,' + fs.readFileSync(p).toString('base64');
+        break;
+      }
+    }
+  } catch {}
+
+  return Buffer.from('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>' +
+    '*{margin:0;padding:0;box-sizing:border-box}' +
+    'html,body{width:100vw;height:100vh;background:#0d0d0d;font-family:\'Segoe UI\',system-ui,sans-serif;color:#f0f0f0;overflow:hidden}' +
+    '.title-bar{height:36px;display:flex;align-items:center;justify-content:center;position:relative;-webkit-app-region:drag;flex-shrink:0}' +
+    '.title-bar .title{font-size:11px;color:rgba(255,255,255,0.45);font-weight:500}' +
+    '.title-bar .close{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:8px;border:none;background:transparent;color:rgba(255,255,255,0.45);cursor:pointer;-webkit-app-region:no-drag}' +
+    '.title-bar .close:hover{background:#ff6b6b;color:#fff}' +
+    '.frame{width:340px;height:384px;background:#181818;border-radius:0 0 48px 48px;border:1px solid rgba(255,255,255,0.06);border-top:none;padding:24px 32px;display:flex;flex-direction:column;align-items:center;position:absolute;top:36px;left:50%;transform:translateX(-50%)}' +
+    '.logo{width:56px;height:56px;border-radius:16px;padding:8px;background:rgba(96,205,255,0.1);border:1px solid rgba(96,205,255,0.18);display:grid;place-items:center;margin-bottom:16px}' +
+    '.logo img{width:100%;height:100%;object-fit:contain}' +
+    '.ring{position:relative;width:80px;height:80px;margin-bottom:12px}' +
+    '.ring svg{width:100%;height:100%;transform:rotate(-90deg)}' +
+    '.ring .track{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:4}' +
+    '.ring .fill{fill:none;stroke:#60cdff;stroke-width:4;stroke-linecap:round;stroke-dasharray:226.19;stroke-dashoffset:226.19;transition:stroke-dashoffset .4s ease}' +
+    '.ring .fill.indeterminate{animation:spin 1.4s linear infinite;stroke-dashoffset:57}' +
+    '@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}' +
+    '.ring .center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}' +
+    '.ring .pct{font-size:16px;font-weight:700}' +
+    '.ring .lbl{font-size:8px;color:rgba(255,255,255,0.45);text-transform:uppercase}' +
+    '</style></head><body>' +
+    '<div class="title-bar"><span class="title">CallerFlash Update</span><button class="close" id="close">&#10005;</button></div>' +
+    '<div class="frame">' +
+    '<div class="logo"><img src="' + iconDataUrl + '" alt="CallerFlash"/></div>' +
+    '<div class="ring"><svg viewBox="0 0 80 80"><circle class="track" cx="40" cy="40" r="36"/><circle class="fill indeterminate" id="fill" cx="40" cy="40" r="36" style="transform-origin:center"/></svg><div class="center"><div class="pct" id="pct">--</div><div class="lbl" id="lbl">Waiting</div></div></div>' +
+    '</div>' +
+    '<script>' +
+    'var fill=document.getElementById("fill"),pct=document.getElementById("pct"),lbl=document.getElementById("lbl");' +
+    'var CIRC=2*Math.PI*36;' +
+    'function setProgress(p){fill.classList.remove("indeterminate");fill.style.transform="none";fill.style.strokeDashoffset=CIRC*(1-p/100);pct.textContent=Math.round(p)+"%";lbl.textContent="Downloading"}' +
+    'function setSpin(){fill.classList.add("indeterminate");pct.textContent="--";lbl.textContent="Working"}' +
+    'document.getElementById("close").addEventListener("click",function(){window.close()});' +
+    'if(window.callerflashUpdater){' +
+    'window.callerflashUpdater.onProgress(function(d){if(d.pct>0)setProgress(d.pct)});' +
+    'window.callerflashUpdater.onStatus(function(d){' +
+    'if(d.status==="downloading"){setSpin()}' +
+    'else if(d.status==="ready"){lbl.textContent="Done";fill.classList.remove("indeterminate");fill.style.strokeDashoffset=0;pct.textContent="100%"}' +
+    '});}' +
+    '</script></body></html>').toString('base64');
 }
 
 // ── IPC handlers ───────────────────────────────────────────────────────

@@ -706,15 +706,11 @@ export function AutoUpdate() {
                 <button
                   key={channelOpt}
                   onClick={() => {
+                    // Just switch channel — don't auto-check
                     setUpdateInfo({ updateChannel: channelOpt });
-                    // Notify main process of channel change
-                    if (window.callerflash?.updater?.setChannel) {
-                      window.callerflash.updater.setChannel(channelOpt);
-                    }
-                    // Trigger immediate check with new channel
                     setOutcome(null);
                     setUpdateReady(false);
-                    setTimeout(() => handleCheckAndDownload(), 100);
+                    setUpdateInfo({ updateAvailable: false, latestVersion: '' });
                   }}
                   className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
                     updateInfo.updateChannel === channelOpt
