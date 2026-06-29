@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Download, RefreshCw,
   Shield, GitBranch,
-  ExternalLink, GitCommit, ChevronDown,
+  GitCommit, ChevronDown,
   Check, X as XIcon, ShieldCheck, AlertCircle
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
@@ -23,14 +23,6 @@ interface GithubRelease {
   body: string;
   html_url: string;
   assets: Array<{ name: string; browser_download_url: string }>;
-}
-
-function GithubIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-    </svg>
-  );
 }
 
 /**
@@ -61,17 +53,18 @@ function parseChangelog(body: string, max = 6): string[] {
  * Handles:
  *   - Semver: 1.5.0, 1.4.2
  *   - Beta prerelease: 1.5.0-beta.28
- *   - Nightly date codes: nightly-20260624
+ *   - Nightly date codes: nightly-20260624 or nightly-20260624-17
  * Nightly versions are always considered NEWER than any semver version.
- * Between two nightlies, the later date wins.
+ * Between two nightlies, the later date wins; same date → higher index wins.
  */
 function compareVersions(a: string, b: string): number {
   const va = formatVersion(a);
   const vb = formatVersion(b);
 
   // Handle nightly date codes (with optional -N increment suffix for multiple builds per day).
-  const nightlyA = va.match(/^nightly-(\d{8})(?:-(\d+))?$/);
-  const nightlyB = vb.match(/^nightly-(\d{8})(?:-(\d+))?$/);
+  // Matches: nightly-YYYYMMDD-N or nightly.YYYYMMDD.N
+  const nightlyA = va.match(/^nightly[.\-](\d{8})(?:[.\-](\d+))?$/i);
+  const nightlyB = vb.match(/^nightly[.\-](\d{8})(?:[.\-](\d+))?$/i);
   
   if (nightlyA && nightlyB) {
     const diff = parseInt(nightlyA[1]) - parseInt(nightlyB[1]);
@@ -125,7 +118,7 @@ function matchesChannel(
   if (channel === 'stable') return !release.prerelease;
   const tag = release.tag_name;
   if (channel === 'beta') return /-beta(\.|$)/.test(tag);
-  if (channel === 'nightly') return /^v?nightly-\d{8}(?:-\d+)?$/i.test(tag);
+  if (channel === 'nightly') return /^v?nightly[.\-]\d{8}(?:[.\-]\d+)?$/i.test(tag);
   return false;
 }
 
@@ -509,26 +502,11 @@ export function AutoUpdate() {
     }
   };
 
-  const openUrl = (url: string) => {
-    if (window.callerflash?.shell?.openExternal) {
-      window.callerflash.shell.openExternal(url);
-    } else {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
-  };
-
-  const openReleasePage = (release?: GithubRelease) => {
-    const url = release?.html_url
-      ?? updateInfo.releasePageUrl
-      ?? `${updateInfo.githubRepo}/releases`;
-    openUrl(url);
-  };
-
   const isBusy = phase === 'checking' || phase === 'downloading' || phase === 'installing';
 
   return (
     <div className="flex flex-col h-full gap-3 animate-fade-in">
-      {/* Compact header — title left, Check + Releases right */}
+      {/* Compact header — title left, Check right */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-win-text">Updates</h2>
@@ -537,15 +515,6 @@ export function AutoUpdate() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => openReleasePage()}
-            className="flex items-center gap-2 px-3 py-1.5 bg-win-surface hover:bg-win-surface-hover text-win-text-secondary rounded-lg text-sm transition-colors border border-win-border"
-            title="Open the GitHub Releases page"
-          >
-            <GithubIcon className="w-3.5 h-3.5" />
-            Releases
-            <ExternalLink className="w-3 h-3" />
-          </button>
           <button
             onClick={handleCheckAndDownload}
             disabled={isBusy}

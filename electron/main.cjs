@@ -406,20 +406,17 @@ ipcMain.on('window:maximize', () => {
 ipcMain.on('window:close', () => hideWindow());
 ipcMain.on('window:hide-to-tray', () => hideWindow());
 ipcMain.on('window:show', () => showWindow());
-
 // ── Toast window (separate frameless BrowserWindow) ─────────────
 // A dedicated always-on-top, transparent, frameless window that
 // renders incoming-call alerts. Lives independently of the main
 // window so toasts still appear when the main app is hidden to the
 // tray.
+//
+// Design: data is passed via URL hash to a standalone HTML file.
+// This avoids IPC entirely — no nodeIntegration, no contextBridge,
+// no race conditions with renderer readiness. The HTML file reads
+// its own URL hash and renders immediately.
 let toastWindow = null;
-// Buffered toast events. The toast window's renderer needs to load
-// before it can receive IPC events; if the renderer is still loading
-// when toast:show arrives, the event is buffered here and flushed
-// once `did-finish-load` fires. Without this, the very first toast
-// after app launch is silently dropped.
-let pendingToasts = [];
-let toastRendererReady = false;
 
 const TOAST_DEFAULT = { x: null, y: null, width: 380, height: 150 };
 
@@ -452,8 +449,36 @@ function saveToastState() {
   }
 }
 
-function createToastWindow() {
-  if (toastWindow && !toastWindow.isDestroyed()) return toastWindow;
+/**
+ * Build the toast URL with data encoded in the hash fragment.
+ * The toast.html file reads window.location.hash to get its data.
+ */
+function buildToastUrl(data) {
+  const c = data.config || {};
+  const params = new URLSearchParams();
+  if (data.callerNumber) params.set('callerNumber', data.callerNumber);
+  if (data.callerName) params.set('callerName', data.callerName);
+  if (data.timestamp) params.set('timestamp', data.timestamp);
+  if (c.duration) params.set('duration', String(c.duration));
+  if (c.backgroundColor) params.set('bgColor', c.backgroundColor);
+  if (c.accentColor) params.set('accentColor', c.accentColor);
+  if (c.textColor) params.set('textColor', c.textColor);
+  if (c.borderRadius != null) params.set('borderRadius', String(c.borderRadius));
+  if (c.opacity != null) params.set('opacity', String(c.opacity));
+
+  const htmlPath = path.join(__dirname, 'toast.html');
+  const hash = '#' + params.toString();
+  // Use file:// URL with hash — the HTML file reads the hash on load
+  return 'file:///' + htmlPath.replace(/\\/g, '/') + hash;
+}
+
+function createToastWindow(data) {
+  // Always create a fresh window for each toast so the URL (with new data) loads cleanly.
+  // Destroy any existing toast window first.
+  if (toastWindow && !toastWindow.isDestroyed()) {
+    try { toastWindow.destroy(); } catch { /* noop */ }
+    toastWindow = null;
+  }
 
   const state = { ...TOAST_DEFAULT, ...(loadToastState() || {}) };
   const opts = {
@@ -469,35 +494,36 @@ function createToastWindow() {
     fullscreenable: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    focusable: true,
+    focusable: false,
     hasShadow: false,
-    paintWhenInitiallyHidden: true,
-    // Ensure the window shows even when the app is in the background
-    // and is not affected by the main window's state
+    // No preload, no nodeIntegration — pure static HTML
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      sandbox: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
     },
   };
-  // Only pass x/y when we actually have a saved position; otherwise
-  // position at the top-right corner of the primary display.
+
+  // Position at top-right corner of the primary display (or saved position).
   if (Number.isFinite(state.x) && Number.isFinite(state.y)) {
     opts.x = state.x;
     opts.y = state.y;
   } else {
     const { screen } = require('electron');
     const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenW, height: screenH } = primaryDisplay.workArea;
-    opts.x = screenW - opts.width - 16; // 16px from right edge
-    opts.y = 16; // 16px from top edge
+    const { width: screenW } = primaryDisplay.workArea;
+    opts.x = screenW - opts.width - 16;
+    opts.y = 16;
   }
+
   toastWindow = new BrowserWindow(opts);
 
-  // Load inline HTML directly — lightweight, always works, no React app needed
-  toastWindow.loadURL(`data:text/html;charset=utf-8,${getToastHtml()}`);
+  // Load the standalone HTML file with data in URL hash
+  const url = buildToastUrl(data || {});
+  toastWindow.loadURL(url);
 
   toastWindow.setMenuBarVisibility(false);
+
   // Use 'screen-saver' level — the highest always-on-top level in Electron.
   // This ensures the toast stays above ALL other windows including other
   // always-on-top windows, task manager, etc.
@@ -505,118 +531,33 @@ function createToastWindow() {
   // Make visible on ALL workspaces/virtual desktops including full-screen apps
   toastWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  // Reset the ready flag on (re)load so events that arrive between
-  // a reload and the new renderer's mount get buffered, not dropped.
-  toastRendererReady = false;
+  // Show the window once the content is loaded
   toastWindow.webContents.on('did-finish-load', () => {
-    toastRendererReady = true;
-    // Flush anything that arrived while the renderer was loading.
-    for (const data of pendingToasts) {
-      toastWindow.webContents.send('toast:show:event', data);
+    // Bring the window to front — critical on Windows where alwaysOnTop
+    // alone may not be enough to make a hidden window visible.
+    if (toastWindow && !toastWindow.isDestroyed()) {
+      toastWindow.show();
+      toastWindow.moveTop();
     }
-    pendingToasts = [];
   });
 
-  // Persist position + size on every move / resize so closing & reopening
-  // the app restores the toast window exactly where the user left it.
-  toastWindow.on('resize', saveToastState);
+  // Persist position + size on every move / resize
   toastWindow.on('move', saveToastState);
+  toastWindow.on('resize', saveToastState);
+
+  // Safety: show after a short timeout even if did-finish-load races
+  setTimeout(() => {
+    if (toastWindow && !toastWindow.isDestroyed() && !toastWindow.isVisible()) {
+      toastWindow.show();
+      toastWindow.moveTop();
+    }
+  }, 200);
 
   return toastWindow;
 }
 
-// ── Inline HTML for branded toast notification ─────────────────────────
-function getToastHtml() {
-  return encodeURIComponent('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>' +
-    '*{margin:0;padding:0;box-sizing:border-box}' +
-    'html,body{width:100%;height:100%;overflow:hidden;background:transparent;font-family:\'Segoe UI\',system-ui,sans-serif}' +
-    '.toast{width:100%;height:100%;background:#1a1a2e;border-radius:16px;border:2px solid rgba(96,205,255,0.4);box-shadow:0 12px 40px rgba(0,0,0,0.8),0 0 60px rgba(96,205,255,0.15);overflow:hidden;position:relative;animation:slideIn .35s cubic-bezier(.16,1,.3,1) forwards}' +
-    '@keyframes slideIn{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}' +
-    '@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.8);opacity:0}}' +
-    '.accent{position:absolute;top:0;left:0;width:5px;height:100%;background:#60cdff;box-shadow:0 0 12px #60cdff}' +
-    '.body{padding:14px 16px 14px 20px;display:flex;gap:12px;height:100%}' +
-    '.icon{width:44px;height:44px;border-radius:50%;background:rgba(96,205,255,0.2);display:grid;place-items:center;flex-shrink:0;position:relative}' +
-    '.ping{position:absolute;top:-2px;right:-2px;width:12px;height:12px;border-radius:50%;background:#6ccb5f;animation:pulse 1.2s ease-in-out infinite}' +
-    '.info{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}' +
-    '.title{font-size:13px;font-weight:600;color:#60cdff;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}' +
-    '.number{font-size:22px;font-weight:700;color:#fff;letter-spacing:.5px}' +
-    '.name{font-size:14px;color:rgba(255,255,255,0.7);margin-top:3px}' +
-    '.time{font-size:11px;color:rgba(255,255,255,0.4);margin-top:4px}' +
-    '.progress{position:absolute;bottom:0;left:0;width:100%;height:4px;background:rgba(96,205,255,0.1)}' +
-    '.progress-bar{height:100%;width:100%;background:#60cdff;transition:width 100ms linear}' +
-    '</style></head><body>' +
-    '<div class="toast">' +
-    '<div class="accent"></div>' +
-    '<div class="body">' +
-    '<div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60cdff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><div class="ping"></div></div>' +
-    '<div class="info">' +
-    '<div class="title" id="title">Incoming Call</div>' +
-    '<div class="number" id="number">Waiting...</div>' +
-    '<div class="name" id="name"></div>' +
-    '<div class="time" id="time"></div>' +
-    '</div></div>' +
-    '<div class="progress"><div class="progress-bar" id="progress"></div></div>' +
-    '</div>' +
-    '<script>' +
-    'var duration=10000,start=Date.now(),closed=false;' +
-    'function update(){if(closed)return;var r=Math.max(0,duration-(Date.now()-start));document.getElementById("progress").style.width=(r/duration*100)+"%";if(r>0)requestAnimationFrame(update);}' +
-    'update();' +
-    'setTimeout(function(){if(!closed){closed=true;window.close()}},duration+500);' +
-    'try{var ipc=require("electron").ipcRenderer;' +
-    'ipc.on("toast:show-event",function(e,d){' +
-    'if(d.callerNumber)document.getElementById("number").textContent=d.callerNumber;' +
-    'if(d.callerName)document.getElementById("name").textContent=d.callerName;' +
-    'if(d.timestamp)document.getElementById("time").textContent=new Date(d.timestamp).toLocaleTimeString();' +
-    'if(d.config&&d.config.duration){duration=d.config.duration*1000;start=Date.now();}' +
-    '});' +
-    '}catch(err){}' +
-    '</script>' +
-    '</body></html>');
-}
-
 ipcMain.on('toast:show', (_event, data) => {
-  const win = createToastWindow();
-  // Ensure the window is always on top at the highest level and visible
-  // on all workspaces (virtual desktops) so the toast is seen regardless
-  // of which desktop the user is on.
-  win.setAlwaysOnTop(true, 'screen-saver');
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-
-  // Function to actually show the window and send data
-  function displayToast() {
-    // Bring the window to front — critical on Windows where alwaysOnTop
-    // alone may not be enough to make a hidden window visible.
-    if (win.isMinimized()) win.restore();
-    if (!win.isVisible()) win.show();
-    win.focus();
-    // Force the window to the foreground (Windows-specific trick)
-    win.moveTop();
-
-    if (toastRendererReady) {
-      win.webContents.send('toast:show:event', data);
-    } else {
-      pendingToasts.push(data);
-    }
-  }
-
-  // If the renderer is already loaded, show immediately.
-  // Otherwise wait for did-finish-load so the HTML is painted before
-  // we make the window visible (avoids a flash of empty content).
-  if (toastRendererReady) {
-    // Small delay to ensure the data URL content is painted
-    setTimeout(displayToast, 50);
-  } else {
-    // The did-finish-load handler will set toastRendererReady = true
-    // and flush pendingToasts. But we also need to show the window.
-    // Add a one-time listener to show after load completes.
-    win.webContents.once('did-finish-load', () => {
-      setTimeout(displayToast, 50);
-    });
-    // Safety: if did-finish-load already fired (race), show after a tick
-    setTimeout(() => {
-      if (!win.isVisible()) displayToast();
-    }, 300);
-  }
+  createToastWindow(data);
 });
 
 ipcMain.on('toast:hide', () => {

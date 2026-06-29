@@ -65,8 +65,9 @@ function sendProgress(payload) {
 // ── Friendly version ───────────────────────────────────────────────────
 function friendlyVersion(version) {
   if (!version) return 'Unknown';
-  const v = version.replace(/^v/, '');
-  const nightly = v.match(/nightly[.\-](\d{4})(\d{2})(\d{2})(?:[.\-](\d+))?/);
+  const v = version.replace(/^v/, '').replace(/^0\.0\.0-/, '');
+  // Match nightly-YYYYMMDD-N or nightly.YYYYMMDD.N (both separators)
+  const nightly = v.match(/^nightly[.\-](\d{4})(\d{2})(\d{2})(?:[.\-](\d+))?$/i);
   if (nightly) {
     const [, y, m, d, n] = nightly;
     return `Nightly ${y}.${m}.${d}${n ? ' #' + n : ''}`;
@@ -102,27 +103,80 @@ function fetchJson(url) {
   });
 }
 
+// ── Nightly version parsing ───────────────────────────────────────────
+// Nightly tags: nightly-YYYYMMDD-N  (e.g., nightly-20260629-17)
+// Installed version may be: "0.0.0-nightly.20260629-17" or "1.4.2"
+function parseNightly(str) {
+  if (!str || typeof str !== 'string') return null;
+  // Strip leading 'v' and '0.0.0-' prefix
+  const cleaned = str.replace(/^v/, '').replace(/^0\.0\.0-/, '');
+  // Match nightly-YYYYMMDD or nightly.YYYYMMDD with optional -N or .N suffix
+  const m = cleaned.match(/^nightly[.\-](\d{8})(?:[.\-](\d+))?$/i);
+  if (!m) return null;
+  return { date: m[1], index: parseInt(m[2] || '0', 10) };
+}
+
+// Compare two nightly info objects. Returns 1 if a > b, -1 if a < b, 0 if equal.
+function compareNightly(a, b) {
+  if (a.date > b.date) return 1;
+  if (a.date < b.date) return -1;
+  if (a.index > b.index) return 1;
+  if (a.index < b.index) return -1;
+  return 0;
+}
+
+// Simple semver comparison (x.y.z). Returns 1 if a > b, -1 if a < b, 0 if equal.
+function compareSemver(a, b) {
+  const pa = a.replace(/^v/, '').replace(/[-+].*/, '').split('.').map(Number);
+  const pb = b.replace(/^v/, '').replace(/[-+].*/, '').split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const na = pa[i] || 0, nb = pb[i] || 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+}
+
 // ── STRICT channel filtering ───────────────────────────────────────────
 // No cross-channel fallback. Each channel only matches its own releases.
 function findRelease(releases, channel) {
   if (!Array.isArray(releases) || !releases.length) return null;
-  const sorted = [...releases].sort((a, b) =>
-    new Date(b.published_at || 0) - new Date(a.published_at || 0));
 
   if (channel === 'stable') {
     // Stable: NOT a prerelease, NO beta/nightly in tag
-    return sorted.find((r) =>
+    const stable = releases.filter((r) =>
       !r.prerelease && !r.draft &&
       !/beta/i.test(r.tag_name) &&
       !/nightly/i.test(r.tag_name)
-    ) || null;
+    );
+    if (!stable.length) return null;
+    // Pick the one with the highest semver tag
+    stable.sort((a, b) => {
+      const c = compareSemver(b.tag_name, a.tag_name);
+      return c !== 0 ? c : new Date(b.published_at || 0) - new Date(a.published_at || 0);
+    });
+    return stable[0] || null;
   }
   if (channel === 'beta') {
     // Beta: tag must contain "beta"
-    return sorted.find((r) => /beta/i.test(r.tag_name)) || null;
+    const betas = releases.filter((r) => /beta/i.test(r.tag_name) && !r.draft);
+    if (!betas.length) return null;
+    betas.sort((a, b) => {
+      const c = compareSemver(b.tag_name, a.tag_name);
+      return c !== 0 ? c : new Date(b.published_at || 0) - new Date(a.published_at || 0);
+    });
+    return betas[0] || null;
   }
-  // Nightly: tag must contain "nightly"
-  return sorted.find((r) => /nightly/i.test(r.tag_name)) || null;
+  // Nightly: tag must match nightly-YYYYMMDD-N pattern
+  const nightlies = releases.filter((r) => parseNightly(r.tag_name) !== null && !r.draft);
+  if (!nightlies.length) return null;
+  // Sort by nightly date+index descending (newest first)
+  nightlies.sort((a, b) => {
+    const na = parseNightly(a.tag_name);
+    const nb = parseNightly(b.tag_name);
+    return compareNightly(nb, na); // descending
+  });
+  return nightlies[0] || null;
 }
 
 function getExeUrl(release) {
@@ -143,58 +197,61 @@ async function checkForUpdates(channel) {
     return { upToDate: true, version: app.getVersion() };
   }
 
-  const version = release.tag_name.replace(/^v/, '');
+  const releaseVersion = release.tag_name.replace(/^v/, '');
   const currentVersion = app.getVersion();
-  const releaseDate = new Date(release.published_at || release.created_at);
 
-  log('found:', version, 'published:', releaseDate.toISOString(), 'current:', currentVersion);
+  log('found release:', releaseVersion, '| installed:', currentVersion);
 
-  // Universal check: if release tag matches current version, it's the SAME release
-  if (version === currentVersion) {
-    log('release tag matches current version exactly → up to date');
-    return { upToDate: true, version: currentVersion };
-  }
+  // ── Nightly channel comparison ──────────────────────────────────────
+  if (channel === 'nightly') {
+    const releaseNightly = parseNightly(release.tag_name);
+    const currentNightly = parseNightly(currentVersion);
 
-  // Also check if the tag name (normalized) is contained in or contains the current version
-  const tagDate = String(release.tag_name).replace(/^v/, '').replace(/[-.]/g, '');
-  const curDate = String(currentVersion).replace(/[-.]/g, '');
-  if (tagDate === curDate || tagDate.includes(curDate) || curDate.includes(tagDate)) {
-    log('release tag is a variant of current version → up to date');
-    return { upToDate: true, version: currentVersion };
-  }
+    log('release nightly info:', JSON.stringify(releaseNightly),
+        '| current nightly info:', JSON.stringify(currentNightly));
 
-  // Compare versions by channel
-  if (channel === 'stable') {
-    // Stable: simple semver compare
-    const remote = version.replace(/[-+].*/, '').split('.').map(Number);
-    const local = currentVersion.replace(/[-+].*/, '').split('.').map(Number);
-    let newer = false;
-    for (let i = 0; i < 3; i++) {
-      const r = remote[i] || 0, l = local[i] || 0;
-      if (r > l) { newer = true; break; }
-      if (r < l) break;
-    }
-    if (!newer) return { upToDate: true, version: currentVersion };
-  } else {
-    // Beta/Nightly: in dev mode always offer update; in packaged mode compare dates
-    const isDev = process.execPath.includes('electron') || process.execPath.includes('node');
-    if (!isDev) {
-      // Packaged: compare release date vs exe mtime
-      // Use exe mtime as the build timestamp — if release was published before
-      // or at the same time as our build, we already have it
-      let buildTime = Date.now();
-      try { buildTime = fs.statSync(process.execPath).mtimeMs; } catch {}
-      if (releaseDate.getTime() <= buildTime) {
-        log('release is same or older than current build → up to date');
+    if (releaseNightly && currentNightly) {
+      // Both are nightly — compare date then index
+      const cmp = compareNightly(releaseNightly, currentNightly);
+      if (cmp <= 0) {
+        log('nightly: release is same or older than installed → up to date');
         return { upToDate: true, version: currentVersion };
       }
+    } else if (releaseNightly && !currentNightly) {
+      // Current version is NOT a nightly (e.g., "1.4.2") — any nightly is newer
+      log('nightly: current version is not a nightly build, offering update');
+    } else if (!releaseNightly) {
+      // Release didn't parse as nightly (shouldn't happen given findRelease filter)
+      log('nightly: release tag did not parse as nightly → up to date');
+      return { upToDate: true, version: currentVersion };
+    }
+    // Fall through to offer the update
+  }
+
+  // ── Stable/Beta channel comparison ─────────────────────────────────
+  if (channel === 'stable') {
+    const cmp = compareSemver(releaseVersion, currentVersion);
+    if (cmp <= 0) {
+      log('stable: release is same or older than installed → up to date');
+      return { upToDate: true, version: currentVersion };
+    }
+  }
+
+  if (channel === 'beta') {
+    const releaseBase = releaseVersion.replace(/[-+].*/, '');
+    const currentBase = currentVersion.replace(/^v/, '').replace(/[-+].*/, '');
+    const cmp = compareSemver(releaseBase, currentBase);
+    if (cmp <= 0) {
+      log('beta: release is same or older than installed → up to date');
+      return { upToDate: true, version: currentVersion };
     }
   }
 
   const downloadUrl = getExeUrl(release);
+  const releaseDate = new Date(release.published_at || release.created_at);
   return {
-    version,
-    friendlyName: friendlyVersion(version),
+    version: releaseVersion,
+    friendlyName: friendlyVersion(releaseVersion),
     downloadUrl,
     releaseDate: releaseDate.toISOString(),
   };
