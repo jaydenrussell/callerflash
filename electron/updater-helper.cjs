@@ -1,14 +1,15 @@
 // CallerFlash Updater Helper
 // ===========================
 // This script is spawned by the main app during install.
-// It waits for the main app to exit, runs the NSIS installer,
-// then relaunches the app.
+// It shows a minimal progress window, waits for the main app to exit,
+// runs the NSIS installer (showing its progress), then relaunches the app.
 //
-// Because it's a separate process (spawned via process.execPath),
-// NSIS can replace the main app's files without contention.
+// The window ONLY shows NSIS installation progress — never download progress.
+// Download happens in the main app before this helper is spawned.
 //
 // Usage: node updater-helper.cjs --installer <path> --app <path> --dir <install-dir> --pid <parent-pid>
 
+const { app, BrowserWindow, nativeImage } = require('electron');
 const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -35,10 +36,105 @@ console.log('[updater-helper] App:', appPath);
 console.log('[updater-helper] Install dir:', installDir || path.dirname(appPath));
 console.log('[updater-helper] Parent PID:', parentPid);
 
+// ── Progress window (shown after app exits) ────────────────────────────
+let progressWindow = null;
+
+function createProgressWindow() {
+  const iconPath = (() => {
+    const resPath = process.resourcesPath || '';
+    for (const p of [
+      path.join(resPath, 'cflogo.png'),
+      path.join(resPath, 'cflogo.ico'),
+      path.join(__dirname, '../buildResources/cflogo.png'),
+      path.join(__dirname, '../buildResources/cflogo.ico'),
+    ]) {
+      try {
+        if (fs.existsSync(p)) return p;
+      } catch {}
+    }
+    return null;
+  })();
+
+  progressWindow = new BrowserWindow({
+    width: 360,
+    height: 200,
+    frame: false,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    show: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    center: true,
+    backgroundColor: '#1a1a1a',
+    icon: iconPath ? nativeImage.createFromPath(iconPath) : undefined,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+
+  progressWindow.setMenuBarVisibility(false);
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #1a1a1a; font-family: 'Segoe UI', system-ui, sans-serif; color: #f0f0f0; overflow: hidden; -webkit-app-region: drag; }
+  .container { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+  .title { font-size: 13px; font-weight: 600; margin-bottom: 16px; color: rgba(255,255,255,0.8); }
+  .progress-bar { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
+  .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #60cdff, #4facfe); border-radius: 3px; transition: width 0.3s ease; }
+  .status { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; }
+  .pct { font-size: 20px; font-weight: 700; color: #60cdff; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="title">Installing CallerFlash Update</div>
+  <div class="pct" id="pct">0%</div>
+  <div class="progress-bar"><div class="progress-fill" id="fill"></div></div>
+  <div class="status" id="status">Waiting for application to close...</div>
+</div>
+<script>
+  const { ipcRenderer } = require('electron');
+  const fill = document.getElementById('fill');
+  const pct = document.getElementById('pct');
+  const status = document.getElementById('status');
+  ipcRenderer.on('helper:progress', (_e, data) => {
+    if (data.percent != null) {
+      fill.style.width = data.percent + '%';
+      pct.textContent = Math.round(data.percent) + '%';
+    }
+    if (data.message) {
+      status.textContent = data.message;
+    }
+  });
+</script>
+</body>
+</html>`;
+
+  progressWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  progressWindow.once('ready-to-show', () => {
+    progressWindow.show();
+    progressWindow.focus();
+  });
+}
+
+function sendProgress(percent, message) {
+  if (progressWindow && !progressWindow.isDestroyed()) {
+    progressWindow.webContents.send('helper:progress', { percent, message });
+  }
+}
+
+// ── Process monitoring ─────────────────────────────────────────────────
 function isProcessRunning(pid) {
   try {
-    execSync(`tasklist /FI "PID eq ${pid}" /NH 2>nul`, { stdio: 'pipe' });
-    return true;
+    const output = execSync(`tasklist /FI "PID eq ${pid}" /NH 2>nul`, { stdio: 'pipe' }).toString();
+    return output.includes(String(pid));
   } catch {
     return false;
   }
@@ -57,6 +153,7 @@ async function waitForExit(pid, timeoutMs = 30000) {
   console.log('[updater-helper] Timeout waiting for parent exit, proceeding anyway');
 }
 
+// ── Run NSIS installer ─────────────────────────────────────────────────
 async function runInstaller() {
   const targetDir = installDir || path.dirname(appPath);
   const nsisArgs = ['/S'];
@@ -65,26 +162,44 @@ async function runInstaller() {
   }
 
   console.log('[updater-helper] Running NSIS installer with args:', nsisArgs.join(' '));
+  sendProgress(10, 'Starting installer...');
 
   return new Promise((resolve, reject) => {
     const proc = spawn(installerPath, nsisArgs, {
-      detached: true,
+      detached: false,
       stdio: 'ignore',
       windowsHide: false,
     });
+
     proc.on('error', reject);
+
+    // Simulate progress while NSIS runs (NSIS /S is silent, no progress feedback)
+    let progress = 10;
+    const progressInterval = setInterval(() => {
+      progress += Math.random() * 8 + 2;
+      if (progress > 90) progress = 90;
+      sendProgress(progress, 'Installing...');
+    }, 800);
+
     proc.on('exit', (code) => {
+      clearInterval(progressInterval);
       console.log('[updater-helper] Installer exited with code:', code);
+      sendProgress(100, 'Installation complete');
       resolve(code);
     });
-    // Don't wait for exit — NSIS spawns a subprocess
-    setTimeout(resolve, 5000);
+
+    // Safety timeout — if NSIS hangs, proceed anyway
+    setTimeout(() => {
+      clearInterval(progressInterval);
+      resolve(0);
+    }, 120000);
   });
 }
 
+// ── Relaunch app ───────────────────────────────────────────────────────
 async function relaunchApp() {
-  // Wait a bit for installer to finish
-  await new Promise(r => setTimeout(r, 3000));
+  await new Promise(r => setTimeout(r, 1500));
+  sendProgress(100, 'Launching application...');
 
   if (fs.existsSync(appPath)) {
     console.log('[updater-helper] Relaunching app...');
@@ -94,15 +209,19 @@ async function relaunchApp() {
   }
 }
 
+// ── Main flow ──────────────────────────────────────────────────────────
 async function main() {
   try {
-    // Wait for parent to exit
+    // Wait for parent to exit first
     if (parentPid) {
       console.log('[updater-helper] Waiting for main app to exit...');
       await waitForExit(parentPid);
       // Extra delay for file handles to release
       await new Promise(r => setTimeout(r, 2000));
     }
+
+    // NOW show the progress window — only for NSIS installation
+    createProgressWindow();
 
     // Run installer
     await runInstaller();
@@ -111,11 +230,23 @@ async function main() {
     await relaunchApp();
 
     console.log('[updater-helper] Done.');
-    process.exit(0);
+    await new Promise(r => setTimeout(r, 1000));
+    app.quit();
   } catch (err) {
     console.error('[updater-helper] Error:', err.message);
-    process.exit(1);
+    sendProgress(0, 'Error: ' + err.message);
+    await new Promise(r => setTimeout(r, 3000));
+    app.quit();
   }
 }
 
-main();
+// Electron app lifecycle
+app.whenReady().then(() => {
+  // Don't show dock icon on macOS
+  if (app.dock) app.dock.hide();
+  main();
+});
+
+app.on('window-all-closed', () => {
+  // Keep running until we're done
+});

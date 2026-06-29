@@ -31,7 +31,6 @@
     "electron-builder": "^26.15.3",
     "ico-endec": "^0.1.6",
     "lucide-react": "^1.21.0",
-    "pngjs": "^7.0.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "tailwind-merge": "3.6.0",

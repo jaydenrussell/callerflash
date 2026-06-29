@@ -243,18 +243,28 @@ export function AutoUpdate() {
       if (status.status === 'downloading') {
         setPhase('downloading');
         setUpdateInfo({ isDownloading: true });
-        setUpdateReady(true);
       } else if (status.status === 'ready') {
         // Download complete — ready to install
         setPhase('idle');
         setUpdateInfo({ isDownloading: false, isInstalling: false, updateAvailable: true });
         setUpdateReady(true);
+      } else if (status.status === 'update-available') {
+        // Main process found an update during startup check
+        setUpdateInfo({
+          latestVersion: status.version,
+          updateAvailable: true,
+        });
+        if (status.downloadUrl) {
+          setDownloadUrl(status.downloadUrl);
+        }
       } else if (status.status === 'installing') {
         setPhase('installing');
         setUpdateInfo({ isDownloading: false, isInstalling: true });
       } else if (status.status === 'success') {
         setPhase('idle');
         setUpdateInfo({ isDownloading: false, isInstalling: false });
+      } else if (status.status === 'up-to-date') {
+        setUpdateInfo({ lastChecked: new Date() });
       } else if (status.status === 'error') {
         setPhase('idle');
         setUpdateInfo({ isDownloading: false, isInstalling: false });
@@ -274,37 +284,24 @@ export function AutoUpdate() {
     });
   }, []);
 
-  // Background update check — fired by the main process on every app
-  // launch. Auto-downloads if update found.
+  // Query download state on mount — if main process already downloaded
+  // an update in the background, we need to know about it.
   useEffect(() => {
-    if (!window.callerflash?.updater?.onBackgroundCheck) return;
-    return window.callerflash.updater.onBackgroundCheck(async ({ channel }) => {
-      try {
-        if (!window.callerflash?.updater?.check) return;
-        const result = await window.callerflash.updater.check(channel);
-        if (result?.version) {
-          setUpdateInfo({
-            latestVersion: result.version,
-            updateAvailable: true,
-            lastChecked: new Date(),
-          });
-          // Auto-download in background if enabled
-          if (updateInfo.autoDownload && window.callerflash?.updater?.download) {
-            window.callerflash.updater.download(channel, result.version, result.downloadUrl);
-          }
-          addDiagnosticLog({
-            level: 'info',
-            category: 'UPDATE',
-            message: `Background check: update found (${result.friendlyName || result.version})`,
-          });
-        } else {
-          setUpdateInfo({ lastChecked: new Date() });
-        }
-      } catch {
-        // Silent — background check must never disrupt the user.
+    if (!window.callerflash?.updater?.getDownloadState) return;
+    window.callerflash.updater.getDownloadState().then((state: any) => {
+      if (state?.status === 'ready' && state?.version) {
+        setUpdateReady(true);
+        setUpdateInfo({
+          latestVersion: state.version,
+          updateAvailable: true,
+          isDownloading: false,
+        });
+      } else if (state?.status === 'downloading') {
+        setPhase('downloading');
+        setUpdateInfo({ isDownloading: true });
       }
-    });
-  }, [updateInfo.currentVersion, addDiagnosticLog]);
+    }).catch(() => {});
+  }, []);
 
   // Auto-check on tab mount — ALWAYS run on first load regardless of
   // last-checked time, so the user sees updates immediately when they
@@ -323,10 +320,8 @@ export function AutoUpdate() {
   }, [updateInfo.updateCheckFrequency, updateInfo.updateChannel]);
 
   /**
-   * One-click flow: fetch metadata, run the verification pipeline, and
-   * if approved, automatically download the binary. The user does NOT
-   * need a separate "Download" step — when ready, they get an "Install"
-   * button. Matches Discord/Slack-style UX: never silently install.
+   * Check for updates — queries GitHub, does NOT download.
+   * The user gets an "Update" button to download, then "Install" when ready.
    */
   const handleCheckAndDownload = async () => {
     setPhase('checking');
@@ -340,21 +335,17 @@ export function AutoUpdate() {
       message: 'Checking GitHub for updates…',
     });
 
-    // Use Electron main process to check + auto-download
+    // Use Electron main process to check
     if (window.callerflash?.updater?.check) {
       const result = await window.callerflash.updater.check(updateInfo.updateChannel);
       if (result?.version) {
-        setUpdateInfo({ latestVersion: result.version, updateAvailable: true });
-        setDownloadUrl(result.downloadUrl); // Store for later download
+        setUpdateInfo({ latestVersion: result.version, updateAvailable: true, lastChecked: new Date() });
+        setDownloadUrl(result.downloadUrl);
         addDiagnosticLog({
           level: 'info',
           category: 'UPDATE',
           message: `Update found: ${result.friendlyName || result.version}`,
         });
-        // Auto-download in background if enabled
-        if (updateInfo.autoDownload && window.callerflash?.updater?.download) {
-          window.callerflash.updater.download(updateInfo.updateChannel, result.version, result.downloadUrl);
-        }
         setPhase('idle');
       } else if (result?.upToDate) {
         setOutcome({ kind: 'no-update', message: `You're running the latest version (${formatVersion(updateInfo.currentVersion)}).` });

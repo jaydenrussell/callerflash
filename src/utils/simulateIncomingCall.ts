@@ -183,12 +183,9 @@ export function simulateIncomingCall(source: 'dashboard' | 'toast-settings' | 'b
 
   addCallRecord(record);
 
-  // ── Always show in-app toast (reliable, works everywhere) ──────────
-  store.addToast(record);
-
-  // ── Also show native OS notification or custom window ──────────────
+  // ── Show notification based on selected style ──────────────────────
   if (store.toastConfig.style === 'native') {
-    // Electron native notification
+    // Native style: ONLY the OS notification — no in-app toast
     if (window.callerflash?.notify?.show) {
       window.callerflash.notify.show(
         'Incoming Call',
@@ -196,7 +193,8 @@ export function simulateIncomingCall(source: 'dashboard' | 'toast-settings' | 'b
       );
     }
   } else {
-    // Custom branded toast window (separate BrowserWindow)
+    // Custom/Branded style: in-app toast + always-on-top branded window
+    store.addToast(record);
     if (window.callerflash?.toast?.show) {
       window.callerflash.toast.show({
         id: record.id,

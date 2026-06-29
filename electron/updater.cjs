@@ -4,13 +4,19 @@ const fs = require('fs');
 const https = require('https');
 const http = require('http');
 const { spawn } = require('child_process');
-const { createHash } = require('crypto');
 
 // ── Module-level state ─────────────────────────────────────────────────
 let mainWindowRef = null;
-let updaterWindow = null;
 let updaterCanClose = false;
 let activeDownload = null; // { cancel: fn }
+
+// Download state — persisted so renderer can query it
+const downloadState = {
+  version: null,
+  path: null,
+  status: 'idle', // idle | downloading | ready | error
+  error: null,
+};
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 const log = (...args) => console.log('[updater]', ...args);
@@ -42,21 +48,14 @@ function loadAppIcon() {
   return nativeImage.createEmpty();
 }
 
-// ── Send to updater window ─────────────────────────────────────────────
+// ── Send to main window ────────────────────────────────────────────────
 function sendStatus(payload) {
-  if (updaterWindow && !updaterWindow.isDestroyed()) {
-    updaterWindow.webContents.send('updater:status', payload);
-  }
-  // Also send to main window if it exists
   if (mainWindowRef && !mainWindowRef.isDestroyed()) {
     mainWindowRef.webContents.send('updater:status', payload);
   }
 }
 
 function sendProgress(payload) {
-  if (updaterWindow && !updaterWindow.isDestroyed()) {
-    updaterWindow.webContents.send('updater:progress', payload);
-  }
   if (mainWindowRef && !mainWindowRef.isDestroyed()) {
     mainWindowRef.webContents.send('updater:progress', payload);
   }
@@ -102,19 +101,26 @@ function fetchJson(url) {
   });
 }
 
-// ── Find release for channel ──────────────────────────────────────────
+// ── STRICT channel filtering ───────────────────────────────────────────
+// No cross-channel fallback. Each channel only matches its own releases.
 function findRelease(releases, channel) {
   if (!Array.isArray(releases) || !releases.length) return null;
   const sorted = [...releases].sort((a, b) =>
     new Date(b.published_at || 0) - new Date(a.published_at || 0));
 
   if (channel === 'stable') {
-    return sorted.find((r) => !r.prerelease && !r.draft) || null;
+    // Stable: NOT a prerelease, NO beta/nightly in tag
+    return sorted.find((r) =>
+      !r.prerelease && !r.draft &&
+      !/beta/i.test(r.tag_name) &&
+      !/nightly/i.test(r.tag_name)
+    ) || null;
   }
   if (channel === 'beta') {
+    // Beta: tag must contain "beta"
     return sorted.find((r) => /beta/i.test(r.tag_name)) || null;
   }
-  // nightly
+  // Nightly: tag must contain "nightly"
   return sorted.find((r) => /nightly/i.test(r.tag_name)) || null;
 }
 
@@ -173,7 +179,7 @@ async function checkForUpdates(channel) {
   };
 }
 
-// ── Download update ────────────────────────────────────────────────────
+// ── Download update (background, no UI window) ─────────────────────────
 async function downloadUpdate(channel, version, downloadUrl) {
   if (activeDownload) { log('download already in progress'); return { status: 'busy' }; }
 
@@ -182,12 +188,18 @@ async function downloadUpdate(channel, version, downloadUrl) {
   // Already downloaded?
   if (fs.existsSync(destPath)) {
     log('already downloaded:', destPath);
-    sendStatus({ status: 'ready' });
+    downloadState.version = version;
+    downloadState.path = destPath;
+    downloadState.status = 'ready';
+    downloadState.error = null;
+    sendStatus({ status: 'ready', version });
     return { status: 'ready', path: destPath };
   }
 
   if (!downloadUrl) {
     log('ERROR: no download URL provided');
+    downloadState.status = 'error';
+    downloadState.error = 'No download URL';
     sendStatus({ status: 'error', message: 'No download URL' });
     return { status: 'error', error: 'No URL' };
   }
@@ -202,7 +214,9 @@ async function downloadUpdate(channel, version, downloadUrl) {
   } catch {}
 
   log('downloading:', downloadUrl, '→', destPath);
-  sendStatus({ status: 'downloading', message: 'Connecting…' });
+  downloadState.status = 'downloading';
+  downloadState.version = version;
+  sendStatus({ status: 'downloading', version });
 
   try {
     await new Promise((resolve, reject) => {
@@ -215,7 +229,7 @@ async function downloadUpdate(channel, version, downloadUrl) {
       }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           res.resume();
-          // Follow redirect
+          // Follow redirect by recursing
           downloadUpdate(channel, version, res.headers.location).then(resolve).catch(reject);
           return;
         }
@@ -245,14 +259,38 @@ async function downloadUpdate(channel, version, downloadUrl) {
     });
 
     activeDownload = null;
+    downloadState.version = version;
+    downloadState.path = destPath;
+    downloadState.status = 'ready';
+    downloadState.error = null;
     log('download complete:', destPath);
-    sendStatus({ status: 'ready' });
+    sendStatus({ status: 'ready', version });
     return { status: 'ready', path: destPath };
   } catch (err) {
     activeDownload = null;
+    downloadState.status = 'error';
+    downloadState.error = err.message;
     logErr('download failed:', err.message);
     try { fs.unlinkSync(destPath); } catch {}
     sendStatus({ status: 'error', message: err.message });
+    return { status: 'error', error: err.message };
+  }
+}
+
+// ── Auto-download on startup (background, no UI) ───────────────────────
+async function autoDownload(channel) {
+  log('auto-download check for channel:', channel);
+  try {
+    const result = await checkForUpdates(channel);
+    if (result?.version && result.downloadUrl) {
+      log('auto-download: update found, downloading in background');
+      // Download silently — no UI window
+      return await downloadUpdate(channel, result.version, result.downloadUrl);
+    }
+    log('auto-download: up to date');
+    return { status: 'up-to-date' };
+  } catch (err) {
+    logErr('auto-download failed:', err.message);
     return { status: 'error', error: err.message };
   }
 }
@@ -293,7 +331,7 @@ function installUpdate(version) {
     return { status: 'error' };
   }
 
-  // Quit after a delay
+  // Quit after a delay to let helper spawn
   setTimeout(() => {
     updaterCanClose = true;
     app.quit();
@@ -302,95 +340,9 @@ function installUpdate(version) {
   return { status: 'installing' };
 }
 
-// ── Updater progress window ────────────────────────────────────────────
-function showUpdaterWindow() {
-  if (updaterWindow && !updaterWindow.isDestroyed()) {
-    updaterWindow.show();
-    updaterWindow.focus();
-    return;
-  }
-
-  let x, y;
-  if (mainWindowRef && !mainWindowRef.isDestroyed()) {
-    const [wx, wy] = mainWindowRef.getPosition();
-    const [ww, wh] = mainWindowRef.getSize();
-    x = Math.round(wx + ww / 2 - 170);
-    y = Math.round(wy + wh * 0.2 - 160);
-  }
-
-  updaterWindow = new BrowserWindow({
-    width: 340, height: 420,
-    frame: false, resizable: false, maximizable: false, minimizable: false,
-    show: false, alwaysOnTop: true, skipTaskbar: true,
-    backgroundColor: '#0d0d0d', icon: loadAppIcon(),
-    x, y,
-    webPreferences: {
-      nodeIntegration: false, contextIsolation: true, sandbox: true,
-      preload: path.join(__dirname, 'updaterPreload.cjs'),
-    },
-  });
-
-  updaterWindow.on('close', (e) => { if (!updaterCanClose) e.preventDefault(); });
-  updaterWindow.loadURL(`data:text/html;base64,${getUpdaterHtml()}`);
-  updaterWindow.once('ready-to-show', () => { updaterWindow.show(); updaterWindow.focus(); });
-}
-
-// ── Inline HTML for updater window ─────────────────────────────────────
-function getUpdaterHtml() {
-  // Get app icon as data URL for embedding
-  let iconDataUrl = '';
-  try {
-    const fs = require('fs');
-    const resPath = process.resourcesPath || '';
-    for (const p of [
-      path.join(resPath, 'cflogo.png'),
-      path.join(__dirname, '../buildResources/cflogo.png'),
-    ]) {
-      if (fs.existsSync(p)) {
-        iconDataUrl = 'data:image/png;base64,' + fs.readFileSync(p).toString('base64');
-        break;
-      }
-    }
-  } catch {}
-
-  return Buffer.from('<!DOCTYPE html><html><head><meta charset="UTF-8"><style>' +
-    '*{margin:0;padding:0;box-sizing:border-box}' +
-    'html,body{width:100vw;height:100vh;background:#0d0d0d;font-family:\'Segoe UI\',system-ui,sans-serif;color:#f0f0f0;overflow:hidden}' +
-    '.title-bar{height:36px;display:flex;align-items:center;justify-content:center;position:relative;-webkit-app-region:drag;flex-shrink:0}' +
-    '.title-bar .title{font-size:11px;color:rgba(255,255,255,0.45);font-weight:500}' +
-    '.title-bar .close{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:8px;border:none;background:transparent;color:rgba(255,255,255,0.45);cursor:pointer;-webkit-app-region:no-drag}' +
-    '.title-bar .close:hover{background:#ff6b6b;color:#fff}' +
-    '.frame{width:340px;height:384px;background:#181818;border-radius:0 0 48px 48px;border:1px solid rgba(255,255,255,0.06);border-top:none;padding:24px 32px;display:flex;flex-direction:column;align-items:center;position:absolute;top:36px;left:50%;transform:translateX(-50%)}' +
-    '.logo{width:56px;height:56px;border-radius:16px;padding:8px;background:rgba(96,205,255,0.1);border:1px solid rgba(96,205,255,0.18);display:grid;place-items:center;margin-bottom:16px}' +
-    '.logo img{width:100%;height:100%;object-fit:contain}' +
-    '.ring{position:relative;width:80px;height:80px;margin-bottom:12px}' +
-    '.ring svg{width:100%;height:100%;transform:rotate(-90deg)}' +
-    '.ring .track{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:4}' +
-    '.ring .fill{fill:none;stroke:#60cdff;stroke-width:4;stroke-linecap:round;stroke-dasharray:226.19;stroke-dashoffset:226.19;transition:stroke-dashoffset .4s ease}' +
-    '.ring .fill.indeterminate{animation:spin 1.4s linear infinite;stroke-dashoffset:57}' +
-    '@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}' +
-    '.ring .center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}' +
-    '.ring .pct{font-size:16px;font-weight:700}' +
-    '.ring .lbl{font-size:8px;color:rgba(255,255,255,0.45);text-transform:uppercase}' +
-    '</style></head><body>' +
-    '<div class="title-bar"><span class="title">CallerFlash Update</span><button class="close" id="close">&#10005;</button></div>' +
-    '<div class="frame">' +
-    '<div class="logo"><img src="' + iconDataUrl + '" alt="CallerFlash"/></div>' +
-    '<div class="ring"><svg viewBox="0 0 80 80"><circle class="track" cx="40" cy="40" r="36"/><circle class="fill indeterminate" id="fill" cx="40" cy="40" r="36" style="transform-origin:center"/></svg><div class="center"><div class="pct" id="pct">--</div><div class="lbl" id="lbl">Waiting</div></div></div>' +
-    '</div>' +
-    '<script>' +
-    'var fill=document.getElementById("fill"),pct=document.getElementById("pct"),lbl=document.getElementById("lbl");' +
-    'var CIRC=2*Math.PI*36;' +
-    'function setProgress(p){fill.classList.remove("indeterminate");fill.style.transform="none";fill.style.strokeDashoffset=CIRC*(1-p/100);pct.textContent=Math.round(p)+"%";lbl.textContent="Downloading"}' +
-    'function setSpin(){fill.classList.add("indeterminate");pct.textContent="--";lbl.textContent="Working"}' +
-    'document.getElementById("close").addEventListener("click",function(){window.close()});' +
-    'if(window.callerflashUpdater){' +
-    'window.callerflashUpdater.onProgress(function(d){if(d.pct>0)setProgress(d.pct)});' +
-    'window.callerflashUpdater.onStatus(function(d){' +
-    'if(d.status==="downloading"){setSpin()}' +
-    'else if(d.status==="ready"){lbl.textContent="Done";fill.classList.remove("indeterminate");fill.style.strokeDashoffset=0;pct.textContent="100%"}' +
-    '});}' +
-    '</script></body></html>').toString('base64');
+// ── Get download state (for renderer queries) ──────────────────────────
+function getDownloadState() {
+  return { ...downloadState };
 }
 
 // ── IPC handlers ───────────────────────────────────────────────────────
@@ -404,7 +356,6 @@ function initUpdaterIPC(mainWindow) {
 
   ipcMain.on('updater:download', async (_e, { channel, version, downloadUrl }) => {
     log('download requested:', channel, version, downloadUrl?.substring(0, 60));
-    showUpdaterWindow();
     await downloadUpdate(channel, version, downloadUrl);
   });
 
@@ -413,7 +364,14 @@ function initUpdaterIPC(mainWindow) {
     installUpdate(version);
   });
 
-  ipcMain.on('updater:show', () => showUpdaterWindow());
+  ipcMain.handle('updater:getDownloadState', () => {
+    return getDownloadState();
+  });
+
+  ipcMain.on('updater:set-channel', (_e, channel) => {
+    log('channel set to:', channel);
+    // Channel is stored in renderer; this is just for logging
+  });
 }
 
-module.exports = { initUpdaterIPC };
+module.exports = { initUpdaterIPC, autoDownload, checkForUpdates, downloadUpdate, installUpdate, getDownloadState };

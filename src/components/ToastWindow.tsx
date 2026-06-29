@@ -240,7 +240,7 @@ function ToastItem({
       className={`fixed ${isExiting ? 'animate-slide-out' : 'animate-slide-in'} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
       style={{
         top: `${stackIndex * 8}px`,
-        left: 0,
+        right: 0,
         maxWidth: `${config.maxWidth}px`,
         width: `${config.maxWidth}px`,
         userSelect: 'none',

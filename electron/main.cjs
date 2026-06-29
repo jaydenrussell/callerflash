@@ -480,10 +480,16 @@ function createToastWindow() {
     },
   };
   // Only pass x/y when we actually have a saved position; otherwise
-  // let Electron choose (center-ish on the primary display).
+  // position at the top-right corner of the primary display.
   if (Number.isFinite(state.x) && Number.isFinite(state.y)) {
     opts.x = state.x;
     opts.y = state.y;
+  } else {
+    const { screen } = require('electron');
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenW, height: screenH } = primaryDisplay.workArea;
+    opts.x = screenW - opts.width - 16; // 16px from right edge
+    opts.y = 16; // 16px from top edge
   }
   toastWindow = new BrowserWindow(opts);
 
@@ -518,10 +524,14 @@ function createToastWindow() {
 
 ipcMain.on('toast:show', (_event, data) => {
   const win = createToastWindow();
+  // Ensure the window is always on top at the highest level and visible
+  // on all workspaces (virtual desktops) so the toast is seen regardless
+  // of which desktop the user is on.
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   // Always re-show and focus — the toast must be visible.
   win.show();
   win.focus();
-  win.setAlwaysOnTop(true, 'screen-saver');
   if (toastRendererReady) {
     win.webContents.send('toast:show:event', data);
   } else {
@@ -718,23 +728,51 @@ function shouldAutoCheck(lastCheckedAt, frequency) {
   return ageDays >= intervalDays;
 }
 
-function scheduleStartupUpdateCheck() {
+async function scheduleStartupUpdateCheck() {
   // Defer until the renderer has mounted and the IPC bridge is live.
-  setTimeout(() => {
+  setTimeout(async () => {
     try {
       const settings = readPersistedSettings();
       const lastChecked = settings.lastCheckedAt ? new Date(settings.lastCheckedAt) : null;
       const frequency = settings.updateCheckFrequency || 'daily';
       if (!shouldAutoCheck(lastChecked, frequency)) return;
 
-      const repo = settings.githubRepo
-        ? settings.githubRepo.replace(/^https?:\/\/github\.com\//, '')
-        : 'jaydenrussell/CallerFlash';
       const channel = settings.updateChannel || 'stable';
+      const autoDownloadEnabled = settings.autoDownload !== false; // default true
 
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        // Tell the renderer to run a background check (no tab switch).
-        mainWindow.webContents.send('updater:background-check', { repo, channel });
+      // Do the check + auto-download in the main process (no UI)
+      console.log('[updater] startup check: channel=' + channel + ' autoDownload=' + autoDownloadEnabled);
+      const result = await updater.checkForUpdates(channel);
+
+      if (result?.version && result.downloadUrl) {
+        console.log('[updater] startup: update found:', result.version);
+        // Notify renderer about available update
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('updater:status', {
+            status: 'update-available',
+            version: result.version,
+            friendlyName: result.friendlyName,
+            downloadUrl: result.downloadUrl,
+          });
+        }
+
+        // Auto-download in background if enabled
+        if (autoDownloadEnabled) {
+          console.log('[updater] startup: auto-downloading update...');
+          await updater.downloadUpdate(channel, result.version, result.downloadUrl);
+          // Notify renderer that download is complete
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('updater:status', {
+              status: 'ready',
+              version: result.version,
+            });
+          }
+        }
+      } else {
+        console.log('[updater] startup: up to date');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('updater:status', { status: 'up-to-date' });
+        }
       }
     } catch (err) {
       console.error('[updater] startup check failed:', err.message);

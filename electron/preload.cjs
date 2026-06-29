@@ -81,6 +81,7 @@ contextBridge.exposeInMainWorld('callerflash', {
     install: (version) => ipcRenderer.send('updater:install', { version }),
     show: () => ipcRenderer.send('updater:show'),
     setChannel: (channel) => ipcRenderer.send('updater:set-channel', channel),
+    getDownloadState: () => ipcRenderer.invoke('updater:getDownloadState'),
     onStatus: (callback) => {
       const handler = (_event, data) => callback(data);
       ipcRenderer.on('updater:status', handler);
