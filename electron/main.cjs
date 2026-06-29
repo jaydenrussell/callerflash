@@ -110,7 +110,7 @@ function createWindow() {
     minWidth: 360,
     minHeight: 400,
     title: 'CallerFlash',
-    icon: loadTrayIcon(),
+    icon: loadWindowIcon(),
     autoHideMenuBar: true,
     // Native Windows 11 styling hints
     titleBarStyle: 'hidden',
@@ -172,6 +172,24 @@ function createWindow() {
   // where the user left it, even if they never "close" the app gracefully.
   mainWindow.on('resize', saveMainWindowState);
   mainWindow.on('move', saveMainWindowState);
+}
+
+// ── Window icon (taskbar, titlebar, Alt+Tab) ────────────────────────
+function loadWindowIcon() {
+  const resPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : '';
+  const candidates = [
+    path.join(resPath, 'cflogo.ico'),
+    path.join(__dirname, '../buildResources/cflogo.ico'),
+    path.join(resPath, 'cflogo.png'),
+    path.join(__dirname, '../buildResources/cflogo.png'),
+  ];
+  for (const iconPath of candidates) {
+    try {
+      const img = nativeImage.createFromPath(iconPath);
+      if (!img.isEmpty()) return img;
+    } catch { /* continue */ }
+  }
+  return nativeImage.createEmpty();
 }
 
 // ── Tray icon + menu ───────────────────────────────────────────────────

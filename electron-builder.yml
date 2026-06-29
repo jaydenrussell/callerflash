@@ -25,10 +25,12 @@ asarUnpack:
   - buildResources/**
 
 win:
+  icon: build/cflogo.ico
   target:
     - target: nsis
       arch:
         - x64
+  artifactName: "CallerFlash-Setup-${version}.${ext}"
 
 linux:
   # .deb only — AppImage extraction fails intermittently in CI runners
