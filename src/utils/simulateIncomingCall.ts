@@ -1,4 +1,4 @@
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, type CallRecord } from '../store/useAppStore';
 import { sanitizeCallerNumberForClipboard } from '../security/secretRedactor';
 
 const sampleCallers = [
