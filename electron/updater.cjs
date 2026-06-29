@@ -550,8 +550,9 @@ async function checkForUpdates(channel) {
 
     const version = release.tag_name.replace(/^v/, '');
     const currentVersion = app.getVersion().replace(/^v/, '');
+    const releaseDate = new Date(release.published_at || release.created_at);
 
-    console.log('[updater] found release:', version, 'current:', currentVersion);
+    console.log('[updater] found release:', version, 'date:', releaseDate.toISOString(), 'current:', currentVersion);
 
     // For stable channel, use semver comparison
     if (channel === 'stable') {
@@ -559,10 +560,24 @@ async function checkForUpdates(channel) {
         return { upToDate: true, version };
       }
     } else {
-      // For beta/nightly: offer update if version string differs at all
-      // (these channels always want the latest)
-      if (version === currentVersion) {
-        return { upToDate: true, version };
+      // For beta/nightly: compare by release date
+      const buildTimestamp = getBuildTimestamp();
+
+      // If the release is newer than our build, it's an update
+      if (releaseDate.getTime() <= buildTimestamp) {
+        console.log('[updater] release is older than or equal to current build, skipping');
+        return { upToDate: true, version: currentVersion };
+      }
+
+      // Also check if the version string matches (for same-day builds)
+      const nightlyDateMatch = version.match(/(\d{8})/);
+      const currentDateMatch = currentVersion.match(/(\d{8})/);
+      if (nightlyDateMatch && currentDateMatch && nightlyDateMatch[1] === currentDateMatch[1]) {
+        const nightlyBuild = parseInt(version.match(/-(\d+)$/)?.[1] || '0', 10);
+        const currentBuild = parseInt(currentVersion.match(/-(\d+)$/)?.[1] || '0', 10);
+        if (nightlyBuild <= currentBuild) {
+          return { upToDate: true, version: currentVersion };
+        }
       }
     }
 
@@ -579,6 +594,22 @@ async function checkForUpdates(channel) {
   } catch (err) {
     console.error('[updater] check failed:', err.message);
     return { error: err.message };
+  }
+}
+
+// ── Get the build timestamp of the running app ───────────────────────
+function getBuildTimestamp() {
+  // Use build timestamp injected at build time
+  if (typeof __APP_BUILD_TIMESTAMP__ === 'number') {
+    return __APP_BUILD_TIMESTAMP__;
+  }
+  // Fallback: use the executable's modification time
+  try {
+    const fs = require('fs');
+    const stat = fs.statSync(process.execPath);
+    return stat.mtimeMs;
+  } catch {
+    return 0;
   }
 }
 

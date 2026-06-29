@@ -3,6 +3,14 @@
 // Responsibilities:
 //   • Create the single browser window that hosts the renderer (React UI).
 //   • Own the Windows system-tray icon and its context menu.
+
+// Build timestamp — use executable mtime as proxy for when the app was built
+// This is used by the updater to compare against GitHub release dates
+try {
+  global.__APP_BUILD_TIMESTAMP__ = require('fs').statSync(process.execPath).mtimeMs;
+} catch {
+  global.__APP_BUILD_TIMESTAMP__ = Date.now();
+}
 //   • Bridge IPC calls from the sandboxed renderer (via preload.cjs).
 //   • Persist the app across window-close events — only the tray "Quit"
 //     entry actually terminates the process.

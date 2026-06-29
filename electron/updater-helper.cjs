@@ -1,15 +1,17 @@
 // CallerFlash Updater Helper
-// This is a standalone script that waits for the main app to exit,
-// runs the NSIS installer, then relaunches the app.
+// ===========================
+// This script is spawned by the main app during install.
+// It waits for the main app to exit, runs the NSIS installer,
+// then relaunches the app.
 //
-// It's spawned by the main app during install. Because it's a separate
-// process, NSIS can replace the main app's files without contention.
+// Because it's a separate process (spawned via process.execPath),
+// NSIS can replace the main app's files without contention.
 //
-// Usage: node updater-helper.cjs --installer <path> --app <path> --dir <install-dir>
+// Usage: node updater-helper.cjs --installer <path> --app <path> --dir <install-dir> --pid <parent-pid>
 
 const { spawn, execSync } = require('child_process');
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 
 const args = process.argv.slice(2);
 function getArg(name) {
@@ -23,98 +25,95 @@ const installDir = getArg('--dir');
 const parentPid = getArg('--pid');
 
 if (!installerPath || !appPath) {
-  console.error('Usage: updater-helper --installer <path> --app <path> [--dir <install-dir>] [--pid <parent-pid>]');
+  console.error('Usage: updater-helper --installer <path> --app <path> [--dir <dir>] [--pid <pid>]');
   process.exit(1);
 }
 
-console.log('[updater-helper] installer:', installerPath);
-console.log('[updater-helper] app:', appPath);
-console.log('[updater-helper] installDir:', installDir || 'auto');
+console.log('[updater-helper] Starting...');
+console.log('[updater-helper] Installer:', installerPath);
+console.log('[updater-helper] App:', appPath);
+console.log('[updater-helper] Install dir:', installDir || path.dirname(appPath));
+console.log('[updater-helper] Parent PID:', parentPid);
 
-async function waitForProcessExit(pid, timeoutMs = 30000) {
-  if (!pid) return true;
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      // Check if process is still running (Windows)
-      execSync(`tasklist /FI "PID eq ${pid}" /NH`, { stdio: 'pipe' });
-      // If we get here, process exists — wait and retry
-      await new Promise(r => setTimeout(r, 500));
-    } catch {
-      // Process not found — it exited
-      return true;
-    }
+function isProcessRunning(pid) {
+  try {
+    execSync(`tasklist /FI "PID eq ${pid}" /NH 2>nul`, { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
   }
-  return false; // Timeout
 }
 
-async function main() {
-  try {
-    // Wait for parent process (main app) to exit
-    if (parentPid) {
-      console.log('[updater-helper] waiting for main app to exit (PID:', parentPid, ')');
-      await waitForProcessExit(parseInt(parentPid, 10));
-      // Extra delay to ensure file handles are released
-      await new Promise(r => setTimeout(r, 2000));
+async function waitForExit(pid, timeoutMs = 30000) {
+  if (!pid) return;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (!isProcessRunning(parseInt(pid, 10))) {
+      console.log('[updater-helper] Parent process exited');
+      return;
     }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  console.log('[updater-helper] Timeout waiting for parent exit, proceeding anyway');
+}
 
-    // Verify installer exists
-    if (!fs.existsSync(installerPath)) {
-      console.error('[updater-helper] installer not found:', installerPath);
-      process.exit(1);
-    }
+async function runInstaller() {
+  const targetDir = installDir || path.dirname(appPath);
+  const nsisArgs = ['/S'];
+  if (targetDir && !targetDir.toLowerCase().includes('temp')) {
+    nsisArgs.push('/D=' + targetDir);
+  }
 
-    // Determine install directory
-    const targetDir = installDir || path.dirname(appPath);
+  console.log('[updater-helper] Running NSIS installer with args:', nsisArgs.join(' '));
 
-    console.log('[updater-helper] running NSIS installer...');
-
-    // Run NSIS installer silently
-    const nsisArgs = ['/S'];
-    if (targetDir && !targetDir.toLowerCase().includes('temp')) {
-      nsisArgs.push('/D=' + targetDir);
-    }
-
+  return new Promise((resolve, reject) => {
     const proc = spawn(installerPath, nsisArgs, {
       detached: true,
       stdio: 'ignore',
       windowsHide: false,
     });
-    proc.unref();
-
-    // Wait for installer to finish (NSIS spawns a subprocess, so we poll)
-    await new Promise(resolve => {
-      const checkInterval = setInterval(() => {
-        try {
-          execSync(`tasklist /FI "IMAGENAME eq ${path.basename(installerPath)}" /NH`, { stdio: 'pipe' });
-        } catch {
-          // Installer process gone
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 1000);
-
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        resolve();
-      }, 300000);
+    proc.on('error', reject);
+    proc.on('exit', (code) => {
+      console.log('[updater-helper] Installer exited with code:', code);
+      resolve(code);
     });
+    // Don't wait for exit — NSIS spawns a subprocess
+    setTimeout(resolve, 5000);
+  });
+}
 
-    console.log('[updater-helper] installer finished, relaunching app...');
+async function relaunchApp() {
+  // Wait a bit for installer to finish
+  await new Promise(r => setTimeout(r, 3000));
 
-    // Relaunch the app
-    if (fs.existsSync(appPath)) {
-      spawn(appPath, [], {
-        detached: true,
-        stdio: 'ignore',
-      }).unref();
+  if (fs.existsSync(appPath)) {
+    console.log('[updater-helper] Relaunching app...');
+    spawn(appPath, [], { detached: true, stdio: 'ignore' }).unref();
+  } else {
+    console.error('[updater-helper] App not found at:', appPath);
+  }
+}
+
+async function main() {
+  try {
+    // Wait for parent to exit
+    if (parentPid) {
+      console.log('[updater-helper] Waiting for main app to exit...');
+      await waitForExit(parentPid);
+      // Extra delay for file handles to release
+      await new Promise(r => setTimeout(r, 2000));
     }
 
-    console.log('[updater-helper] done.');
+    // Run installer
+    await runInstaller();
+
+    // Relaunch
+    await relaunchApp();
+
+    console.log('[updater-helper] Done.');
     process.exit(0);
   } catch (err) {
-    console.error('[updater-helper] error:', err.message);
+    console.error('[updater-helper] Error:', err.message);
     process.exit(1);
   }
 }
