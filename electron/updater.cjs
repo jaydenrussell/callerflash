@@ -154,6 +154,7 @@ function fetchJson(url) {
 }
 
 // ── Find release for channel ──────────────────────────────────────────
+// Each channel ONLY shows its own releases. No cross-channel fallback.
 function findReleaseForChannel(releases, channel) {
   if (!Array.isArray(releases) || releases.length === 0) return null;
   const sorted = [...releases].sort((a, b) => {
@@ -162,21 +163,52 @@ function findReleaseForChannel(releases, channel) {
   });
 
   if (channel === 'stable') {
-    // Prefer non-prerelease, but fall back to latest if all are prerelease
-    return sorted.find((r) => !r.prerelease && !r.draft) ||
-           sorted.find((r) => !r.prerelease) ||
-           sorted[0];
+    return sorted.find((r) => !r.prerelease && !r.draft) || null;
   }
   if (channel === 'beta') {
-    // Tag contains "beta", or fall back to latest prerelease
-    return sorted.find((r) => /beta/i.test(r.tag_name)) ||
-           sorted.find((r) => r.prerelease) ||
-           sorted[0];
+    return sorted.find((r) => /beta/i.test(r.tag_name)) || null;
   }
-  // Nightly: tag contains "nightly", or any prerelease, or latest
-  return sorted.find((r) => /nightly/i.test(r.tag_name)) ||
-         sorted.find((r) => r.prerelease) ||
-         sorted[0];
+  return sorted.find((r) => /nightly/i.test(r.tag_name)) || null;
+}
+
+// ── Compare two semver-like versions ─────────────────────────────────
+// Returns >0 if a is newer, <0 if b is newer, 0 if equal
+function compareVersions(a, b) {
+  // Handle special prerelease tags
+  const aIsNightly = /nightly/i.test(a);
+  const bIsNightly = /nightly/i.test(b);
+  const aIsBeta = /beta/i.test(a) && !aIsNightly;
+  const bIsBeta = /beta/i.test(b) && !bIsNightly;
+
+  // Extract numeric parts for comparison
+  const aNum = a.replace(/^v/, '').replace(/-.+$/, ''); // "1.4.2" from "1.4.2-nightly.20260627"
+  const bNum = b.replace(/^v/, '').replace(/-.+$/, '');
+
+  // Compare numeric parts first
+  const pa = aNum.split('.').map(Number);
+  const pb = bNum.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const na = pa[i] || 0;
+    const nb = pb[i] || 0;
+    if (na !== nb) return na - nb;
+  }
+
+  // Same numeric version — compare prerelease precedence
+  // stable > beta > nightly
+  const preOrder = { stable: 3, beta: 2, nightly: 1 };
+  const aPre = aIsNightly ? 'nightly' : aIsBeta ? 'beta' : 'stable';
+  const bPre = bIsNightly ? 'nightly' : bIsBeta ? 'beta' : 'stable';
+
+  if (preOrder[aPre] !== preOrder[bPre]) return preOrder[aPre] - preOrder[bPre];
+
+  // Same prerelease type — compare nightly dates (if nightly)
+  if (aIsNightly && bIsNightly) {
+    const aDate = a.match(/(\d{8})/)?.[1] || '';
+    const bDate = b.match(/(\d{8})/)?.[1] || '';
+    if (aDate !== bDate) return aDate < bDate ? -1 : 1;
+  }
+
+  return 0;
 }
 
 function getExeDownloadUrl(release) {
@@ -518,8 +550,8 @@ async function checkForUpdates(channel) {
     const version = release.tag_name.replace(/^v/, '');
     const currentVersion = app.getVersion().replace(/^v/, '');
 
-    // Check if this is actually newer (string compare works for semver)
-    if (version === currentVersion || version <= currentVersion) {
+    // Only report update if remote version is actually newer
+    if (compareVersions(version, currentVersion) <= 0) {
       return { upToDate: true, version };
     }
 

@@ -532,24 +532,48 @@ ipcMain.on('shell:open-external', (_event, url) => {
 // the user know via the OS notification surface, in addition to the
 // tray menu.
 ipcMain.on('notify:show', (_event, title, body) => {
-  if (!app.isReady() || !Notification?.isSupported?.()) return;
+  console.log('[notify] received:', title, body?.substring(0, 50));
+  if (!app.isReady()) return;
+
   const safeTitle = typeof title === 'string' ? title.slice(0, 120) : 'CallerFlash';
   const safeBody = typeof body === 'string' ? body.slice(0, 240) : '';
-  const n = new Notification({
-    title: safeTitle,
-    body: safeBody,
-    silent: false,
-  });
-  n.show();
-  // If the main window exists, clicking the notification brings it
-  // forward so the user lands on the Updates tab.
-  n.on('click', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      if (!mainWindow.isVisible()) mainWindow.show();
-      mainWindow.focus();
+
+  // Check if native notifications are supported
+  if (Notification?.isSupported?.()) {
+    try {
+      const n = new Notification({
+        title: safeTitle,
+        body: safeBody,
+        silent: false,
+      });
+      n.show();
+      console.log('[notify] native notification shown');
+      n.on('click', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          if (!mainWindow.isVisible()) mainWindow.show();
+          mainWindow.focus();
+        }
+      });
+      return;
+    } catch (err) {
+      console.error('[notify] native notification failed:', err.message);
     }
-  });
+  }
+
+  // Fallback: use the tray balloon if available (Windows)
+  if (tray && !tray.isDestroyed()) {
+    try {
+      tray.displayBalloon({
+        title: safeTitle,
+        content: safeBody,
+        iconType: 'info',
+      });
+      console.log('[notify] tray balloon shown');
+    } catch (err) {
+      console.error('[notify] tray balloon failed:', err.message);
+    }
+  }
 });
 
 // ── IPC: safeStorage (DPAPI on Windows) ────────────────────────────────
