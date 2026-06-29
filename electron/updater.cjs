@@ -50,6 +50,7 @@ function loadAppIcon() {
 
 // ── Send to main window ────────────────────────────────────────────────
 function sendStatus(payload) {
+  log('sendStatus:', JSON.stringify(payload), '| mainWindowRef:', mainWindowRef ? (mainWindowRef.isDestroyed() ? 'destroyed' : 'OK') : 'null');
   if (mainWindowRef && !mainWindowRef.isDestroyed()) {
     mainWindowRef.webContents.send('updater:status', payload);
   }
@@ -322,7 +323,9 @@ async function autoDownload(channel) {
 
 // ── Install update ─────────────────────────────────────────────────────
 function installUpdate(version) {
+  log('installUpdate START: version=' + version);
   const exePath = exePathFor(version);
+  log('installUpdate: path=' + exePath + ' exists=' + fs.existsSync(exePath));
   if (!fs.existsSync(exePath)) {
     sendStatus({ status: 'error', message: 'File not found. Download again.' });
     return { status: 'error' };
