@@ -287,14 +287,14 @@ export function AutoUpdate() {
             updateAvailable: true,
             lastChecked: new Date(),
           });
-          // Auto-download in background
-          if (window.callerflash?.updater?.download) {
+          // Auto-download in background if enabled
+          if (updateInfo.autoDownload && window.callerflash?.updater?.download) {
             window.callerflash.updater.download(channel, result.version, result.downloadUrl);
           }
           addDiagnosticLog({
             level: 'info',
             category: 'UPDATE',
-            message: `Background check: update found (${result.friendlyName || result.version}), downloading…`,
+            message: `Background check: update found (${result.friendlyName || result.version})`,
           });
         } else {
           setUpdateInfo({ lastChecked: new Date() });
@@ -347,10 +347,10 @@ export function AutoUpdate() {
         addDiagnosticLog({
           level: 'info',
           category: 'UPDATE',
-          message: `Update found: ${result.friendlyName || result.version}. Downloading in background…`,
+          message: `Update found: ${result.friendlyName || result.version}`,
         });
-        // Auto-download in background (pass the download URL from the check result)
-        if (window.callerflash?.updater?.download) {
+        // Auto-download in background if enabled
+        if (updateInfo.autoDownload && window.callerflash?.updater?.download) {
           window.callerflash.updater.download(updateInfo.updateChannel, result.version, result.downloadUrl);
         }
         setPhase('idle');
@@ -580,7 +580,7 @@ export function AutoUpdate() {
         </div>
       )}
 
-      {/* ── Prominent update-available banner ─────────────────────── */}
+      {/* ── Update available notification ──────────────────────────── */}
       {updateInfo.updateAvailable && phase !== 'checking' && (
         <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500/15 to-yellow-500/10 border border-amber-400/40">
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-400/20 flex items-center justify-center">
@@ -591,53 +591,24 @@ export function AutoUpdate() {
               Update available: {formatVersion(updateInfo.latestVersion)}
             </p>
             <p className="text-[11px] text-win-text-secondary mt-0.5">
-              {phase === 'downloading'
-                ? `Downloading… ${Math.round(updateInfo.downloadProgress || 0)}%`
-                : phase === 'installing'
-                ? 'Installing…'
-                : updateReady
-                ? 'Downloaded and ready to install.'
-                : `Newer than your current ${formatVersion(updateInfo.currentVersion)} on the ${updateInfo.updateChannel} channel.`}
+              {phase === 'installing' ? 'Installing…'
+                : updateReady ? 'Downloaded and ready to install.'
+                : `Newer than your current ${formatVersion(updateInfo.currentVersion)}.`}
             </p>
-            {phase === 'downloading' && (
-              <div className="mt-1.5 w-full h-1.5 bg-black/20 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-amber-400 rounded-full transition-all duration-300"
-                  style={{ width: `${updateInfo.downloadProgress || 0}%` }}
-                />
-              </div>
-            )}
           </div>
           <div className="flex-shrink-0">
             {phase === 'installing' ? (
-              <button
-                disabled
-                className="flex items-center gap-2 px-4 py-2 bg-win-card text-win-text-secondary rounded-lg text-sm font-medium cursor-not-allowed opacity-70"
-              >
+              <button disabled className="flex items-center gap-2 px-4 py-2 bg-win-card text-win-text-secondary rounded-lg text-sm font-medium cursor-not-allowed opacity-70">
                 <div className="w-4 h-4 border-2 border-win-text-secondary border-t-transparent rounded-full animate-spin" />
                 Installing…
               </button>
-            ) : phase === 'downloading' ? (
-              <button
-                disabled
-                className="flex items-center gap-2 px-4 py-2 bg-win-card text-win-text-secondary rounded-lg text-sm font-medium cursor-not-allowed opacity-70"
-              >
-                <div className="w-4 h-4 border-2 border-win-text-secondary border-t-transparent rounded-full animate-spin" />
-                Downloading…
-              </button>
             ) : updateReady ? (
-              <button
-                onClick={handleInstall}
-                className="flex items-center gap-2 px-4 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors"
-              >
+              <button onClick={handleInstall} className="flex items-center gap-2 px-4 py-2 bg-win-success hover:bg-win-success/85 text-black rounded-lg text-sm font-semibold transition-colors">
                 <Download className="w-4 h-4" />
                 Install
               </button>
             ) : (
-              <button
-                onClick={handleUpdate}
-                className="flex items-center gap-2 px-4 py-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors"
-              >
+              <button onClick={handleUpdate} className="flex items-center gap-2 px-4 py-2 bg-win-accent hover:bg-win-accent-hover text-black rounded-lg text-sm font-semibold transition-colors">
                 <Download className="w-4 h-4" />
                 Update
               </button>
