@@ -160,31 +160,34 @@ function friendlyVersion(version) {
 
 // ── Check for updates ─────────────────────────────────────────────────
 async function checkForUpdates(channel) {
+  const currentVersion = app.getVersion();
+
   // In dev mode, skip entirely — package.json version is meaningless
   if (!app.isPackaged) {
     log('dev mode: skipping update check');
-    return { upToDate: true, version: app.getVersion() };
+    return { upToDate: true, version: currentVersion, currentVersion };
   }
 
-  const currentVersion = app.getVersion();
   log(`checking channel=${channel} current=${currentVersion}`);
 
   try {
     const release = await findLatestRelease(channel);
     if (!release) {
       log('no release found for channel:', channel);
-      return { upToDate: true, version: currentVersion };
+      return { upToDate: true, version: currentVersion, currentVersion };
     }
 
     log(`found release: ${release.version} (${release.publishedAt})`);
 
     if (!isUpdateAvailable(currentVersion, release.version)) {
       log('up to date');
-      return { upToDate: true, version: currentVersion };
+      return { upToDate: true, version: currentVersion, currentVersion };
     }
 
     return {
+      upToDate: false,
       version: release.version,
+      currentVersion,
       downloadUrl: release.downloadUrl,
       publishedAt: release.publishedAt,
     };
