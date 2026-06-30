@@ -1,11 +1,11 @@
 name: Release — Alpha
 
 # Triggered by:
-#   • push to the `nightly` branch (auto-synced from main via PAT)
+#   • push to the `alpha` branch (auto-synced from main via PAT)
 #   • daily schedule (03:00 UTC)
 #   • manual dispatch
 #
-# Build context: the `nightly` branch HEAD (mirrors main).
+# Build context: the `alpha` branch HEAD (mirrors main).
 # Promote to beta by manually dispatching the beta workflow.
 
 on:

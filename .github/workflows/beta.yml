@@ -1,9 +1,9 @@
 name: Release — Beta
 
 # Triggered by manual dispatch ONLY.
-# Automatically merges the latest nightly branch before building.
+# Automatically merges the latest alpha branch before building.
 #
-# Build context: the merged result (nightly → beta).
+# Build context: the merged result (alpha → beta).
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   sync:
-    name: Merge nightly → beta
+    name: Merge alpha → beta
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -21,14 +21,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.PAT_TOKEN }}
 
-      - name: Merge nightly into beta
+      - name: Merge alpha into beta
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin nightly
+          git fetch origin alpha
           git checkout beta || git checkout -b beta
           git reset origin/beta --hard
-          git merge origin/nightly --no-ff -m "chore: merge nightly → beta for release" || true
+          git merge origin/alpha --no-ff -m "chore: merge alpha → beta for release" || true
 
       - name: Push beta
         run: git push origin beta --force

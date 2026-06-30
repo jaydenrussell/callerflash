@@ -16,7 +16,7 @@ name: Build, Sign & Release
 # Also produces channel-specific manifests for electron-updater:
 #   - latest.yml   (stable)
 #   - beta.yml     (beta)
-#   - nightly.yml  (nightly)
+#   - alpha.yml   (alpha)
 #
 # All assets are attached to the GitHub Release so the in-app auto-updater
 # (see src/components/AutoUpdate.tsx + src/security/updateVerifier.ts)
@@ -343,7 +343,7 @@ jobs:
             release/*.blockmap
             release/latest.yml
             release/beta.yml
-            release/nightly.yml
+            release/alpha.yml
             release/SHA256SUMS
             release/*.sig
           retention-days: 7

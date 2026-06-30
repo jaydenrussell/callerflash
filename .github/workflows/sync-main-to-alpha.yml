@@ -1,8 +1,8 @@
 name: Sync main → alpha
 
-# Automatically pushes the latest main to the nightly branch on every
+# Automatically pushes the latest main to the alpha branch on every
 # commit. Uses a PAT (not GITHUB_TOKEN) so the push triggers the
-# nightly release workflow.
+# alpha release workflow.
 
 on:
   push:
