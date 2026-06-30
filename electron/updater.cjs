@@ -68,7 +68,7 @@ async function findLatestRelease(channel) {
   if (!exe) return null;
 
   return {
-    version: latest.tag_name,           // e.g. "nightly-20260629-17"
+    version: latest.tag_name,           // e.g. "v0.1.0-alpha.1"
     downloadUrl: exe.browser_download_url,
     publishedAt: latest.published_at,
   };
@@ -134,7 +134,7 @@ function isUpdateAvailable(currentVersion, remoteVersion) {
 
 // ── Friendly version display ──────────────────────────────────────────
 // Returns a human-readable version name for UI display.
-//   nightly-20260629-6  → "Nightly 2026.06.29 (#6)"
+//   0.1.0-alpha.1       → "Alpha 0.1.0 (#1)"
 //   1.5.0-beta.28       → "Beta 1.5.0 (#28)"
 //   1.4.2               → "1.4.2"
 function friendlyVersion(version) {

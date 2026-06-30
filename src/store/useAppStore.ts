@@ -77,7 +77,7 @@ export interface UpdateInfo {
   lastChecked: Date | null;
   autoUpdate: boolean;
   autoDownload: boolean;
-  updateChannel: 'stable' | 'beta' | 'nightly';
+  updateChannel: 'stable' | 'beta' | 'alpha';
   updateCheckFrequency: 'off' | 'daily' | 'weekly' | 'monthly';
   githubRepo: string;
   releaseNotes: string;
@@ -96,7 +96,7 @@ interface PersistedUiSettings {
   toastDragPosition?: { x: number; y: number } | null;
   updateCheckFrequency?: 'off' | 'daily' | 'weekly' | 'monthly';
   lastCheckedAt?: string;
-  updateChannel?: 'stable' | 'beta' | 'nightly';
+  updateChannel?: 'stable' | 'beta' | 'alpha';
   autoUpdate?: boolean;
   autoDownload?: boolean;
   toastConfig?: Partial<ToastConfig>;

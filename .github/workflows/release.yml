@@ -317,15 +317,15 @@ jobs:
           echo "DEBUG: generate-latest-yml.cjs exists? $(test -f scripts/generate-latest-yml.cjs && echo YES || echo NO)"
           CHANNEL="${{ needs.route.outputs.channel }}"
           VERSION="${{ needs.route.outputs.version }}"
-          # electron-updater reads `latest.yml` for stable. For beta/nightly,
+          # electron-updater reads `latest.yml` for stable. For beta/alpha,
           # generate a parallel manifest from the same build artifacts with
           # the appropriate `channel` field.
           case "$CHANNEL" in
             beta)
               node "$GITHUB_WORKSPACE/scripts/generate-latest-yml.cjs" release "$VERSION" beta.yml beta
               ;;
-            nightly)
-              node "$GITHUB_WORKSPACE/scripts/generate-latest-yml.cjs" release "$VERSION" nightly.yml nightly
+            alpha)
+              node "$GITHUB_WORKSPACE/scripts/generate-latest-yml.cjs" release "$VERSION" alpha.yml alpha
               ;;
             stable)
               echo "Stable channel: latest.yml already generated in build job"
@@ -404,7 +404,7 @@ jobs:
           case "$CHANNEL" in
             stable)  ASSETS_PARTS+=( "release/latest.yml"  ) ;;
             beta)    ASSETS_PARTS+=( "release/beta.yml"    ) ;;
-            nightly) ASSETS_PARTS+=( "release/nightly.yml" ) ;;
+            alpha)    ASSETS_PARTS+=( "release/alpha.yml"    ) ;;
           esac
 
           # Linux assets — .deb merged into release/ via merge-multiple.
@@ -444,7 +444,7 @@ jobs:
       - name: Create tag + GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.route.outputs.channel == 'nightly' && needs.route.outputs.version || format('v{0}', needs.route.outputs.version) }}
+          tag_name: ${{ format('v{0}', needs.route.outputs.version) }}
           name: ${{ needs.route.outputs.release_name }}
           body_path: release-notes.md
           prerelease: ${{ needs.route.outputs.prerelease }}

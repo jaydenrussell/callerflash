@@ -29,7 +29,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const channel = (process.argv[2] || 'nightly').toLowerCase();
+const channel = (process.argv[2] || 'alpha').toLowerCase();
 const override = process.argv[3];
 
 function readPackageVersion() {

@@ -74,7 +74,7 @@ declare global {
     onShow: (callback: (data: CallerFlashToastEventData) => void) => () => void;
   }
 
-  type UpdateChannel = 'stable' | 'beta' | 'nightly';
+  type UpdateChannel = 'stable' | 'beta' | 'alpha';
 
   interface CallerFlashUpdaterStatus {
     status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error' | 'noop' | 'success';

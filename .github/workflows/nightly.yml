@@ -1,4 +1,4 @@
-name: Release — Nightly
+name: Release — Alpha
 
 # Triggered by:
 #   • push to the `nightly` branch (auto-synced from main via PAT)
@@ -23,5 +23,5 @@ jobs:
   release:
     uses: ./.github/workflows/release.yml
     with:
-      channel: nightly
+      channel: alpha
     secrets: inherit
