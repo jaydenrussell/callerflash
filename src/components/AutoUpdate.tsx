@@ -354,6 +354,16 @@ export function AutoUpdate() {
           category: 'UPDATE',
           message: `Update found: ${result.friendlyName || result.version}`,
         });
+
+        // Auto-download if enabled
+        if (updateInfo.autoDownload && result.downloadUrl) {
+          setPhase('downloading');
+          setUpdateInfo({ isDownloading: true });
+          // Delegate download to main process so progress is reported via IPC.
+          if (window.callerflash?.updater?.download) {
+            window.callerflash.updater.download(updateInfo.updateChannel, result.version, result.downloadUrl);
+          }
+        }
       } else {
         setOutcome({ kind: 'no-update', message: `You're running the latest version (${formatVersion(updateInfo.currentVersion)}).` });
         setUpdateInfo({ updateAvailable: false, lastChecked: new Date() });
