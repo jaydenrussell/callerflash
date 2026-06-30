@@ -26,7 +26,7 @@ on:
   workflow_call:
     inputs:
       channel:
-        description: 'Release channel: "stable" | "beta" | "nightly"'
+        description: 'Release channel: "stable" | "beta" | "alpha"'
         required: true
         type: string
       version_override:
@@ -82,11 +82,10 @@ jobs:
           # Compute the formatted release name.
           #   stable:  CallerFlash v1.5.0
           #   beta:    CallerFlash v1.5.0-28.beta
-          #   nightly: CallerFlash — Nightly 20260624
+          #   alpha:   CallerFlash 0.1.0-alpha.N (testing)
           case "$CHANNEL" in
-            nightly)
-              NIGHTLY_DATE="${VERSION#nightly-}"
-              echo "release_name=CallerFlash — Nightly ${NIGHTLY_DATE}" >> "$GITHUB_OUTPUT"
+            alpha)
+              echo "release_name=CallerFlash ${VERSION} (Alpha)" >> "$GITHUB_OUTPUT"
               ;;
             beta)
               BETA_BASE="${VERSION%%-*}"
@@ -157,21 +156,16 @@ jobs:
           VERSION="${{ needs.route.outputs.version }}"
           CHANNEL="${{ needs.route.outputs.channel }}"
 
-          if [[ "$CHANNEL" == "nightly" ]]; then
-            # Nightly: package.json needs valid semver for electron-builder.
-            # Use 0.0.0-nightly.YYYYMMDD.N format internally.
-            # The display name and artifact use clean nightly-YYYYMMDD-N.
-            NIGHTLY_TAG="$VERSION"
-            NIGHTLY_SEMVER="0.0.0-nightly.$(echo $VERSION | sed 's|nightly-||; s|-|.|')"
-            ARTIFACT="CallerFlash-${NIGHTLY_TAG}.\${ext}"
+          if [[ "$CHANNEL" == "alpha" ]]; then
+            # Alpha: valid semver prerelease (0.1.0-alpha.N). No special handling needed.
+            ARTIFACT="CallerFlash-${VERSION}.\${ext}"
             node -e "
               const fs = require('fs');
               const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
-              pkg.version = '${NIGHTLY_SEMVER}';
+              pkg.version = '${VERSION}';
               pkg.build.artifactName = '${ARTIFACT}';
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
             "
-            echo "Set package.json version to ${NIGHTLY_SEMVER} (display: ${NIGHTLY_TAG})"
           elif [[ "$CHANNEL" == "beta" ]]; then
             # Beta: version 1.5.0-beta.28 is valid semver.
             # artifactName: CallerFlash-1.5.0-beta.28.exe

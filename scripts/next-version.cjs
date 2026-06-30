@@ -11,12 +11,12 @@
  *               version if no stable tags exist yet)
  *   - beta    → bump `-beta.N` for the current X.Y.Z; if X.Y.Z is already
  *               promoted to stable, advance to `X.(Y+1).0-beta.1`
- *   - nightly → `nightly-YYYYMMDD` (date code, one build per day)
+ *   - alpha  → `0.1.0-alpha.N` (auto-incrementing prerelease, testing only)
  *
  * Usage:
  *   node scripts/next-version.cjs stable
  *   node scripts/next-version.cjs beta
- *   node scripts/next-version.cjs nightly
+ *   node scripts/next-version.cjs alpha
  *   node scripts/next-version.cjs beta 1.5.0-beta.7   # override
  *
  * Output: the bare version string (no leading `v`) on stdout.
@@ -129,28 +129,20 @@ function nextBeta(tags, baseVer) {
   return `${currentBase}-beta.${maxN + 1}`;
 }
 
-function nextNightly(tags) {
-  // Nightly uses a simple date code: nightly-YYYYMMDD
-  // Multiple builds in a day append an auto-incrementing suffix: nightly-YYYYMMDD-1
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  const prefix = `nightly-${y}${m}${d}`;
+function nextAlpha(tags) {
+  // Alpha uses prerelease semver: 0.1.0-alpha.N
+  // Find all existing alpha tags and increment N
+  const parsed = tags.map(parseTag).filter(Boolean);
+  const alphas = parsed.filter((t) => t.pre && /^alpha\.\d+$/.test(t.pre));
 
-  let max = -1;
-  for (const t of tags) {
-    const clean = t.replace(/^v/, '');
-    if (clean === prefix) {
-      if (0 > max) max = 0;
-    } else if (clean.startsWith(`${prefix}-`)) {
-      const num = parseInt(clean.slice(prefix.length + 1), 10);
-      if (!isNaN(num) && num > max) max = num;
-    }
+  // Find highest alpha.N
+  let maxN = 0;
+  for (const t of alphas) {
+    const n = parseInt(t.pre.split('.')[1], 10);
+    if (!isNaN(n) && n > maxN) maxN = n;
   }
 
-  if (max === -1) return prefix; // First build of the day
-  return `${prefix}-${max + 1}`; // Subsequent builds
+  return `0.1.0-alpha.${maxN + 1}`;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────
@@ -169,10 +161,10 @@ try {
     result = nextStable(gitTags(), baseVer);
   } else if (channel === 'beta') {
     result = nextBeta(gitTags(), baseVer);
-  } else if (channel === 'nightly') {
-    result = nextNightly(gitTags());
+  } else if (channel === 'alpha') {
+    result = nextAlpha(gitTags());
   } else {
-    console.error(`Unknown channel: ${channel} (expected: stable | beta | nightly)`);
+    console.error(`Unknown channel: ${channel} (expected: stable | beta | alpha)`);
     process.exit(1);
   }
 

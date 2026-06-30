@@ -38,11 +38,11 @@ export const ALLOWED_UPDATE_HOSTS = [
 export const MIN_SUPPORTED_VERSION = '1.4.0';
 
 // Update channel definitions — stable is the only one most users should
-// ever see, but we expose beta/nightly under explicit opt-in.
+// ever see, but we expose beta/alpha under explicit opt-in.
 export const CHANNEL_POLICY = {
   stable: { allowPrerelease: false },
   beta: { allowPrerelease: true },
-  nightly: { allowPrerelease: true },
+  alpha: { allowPrerelease: true },
 } as const;
 
 export type UpdateChannel = keyof typeof CHANNEL_POLICY;

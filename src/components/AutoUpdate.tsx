@@ -113,12 +113,12 @@ function formatReleaseDate(iso: string): string {
  */
 function matchesChannel(
   release: GithubRelease,
-  channel: 'stable' | 'beta' | 'nightly'
+  channel: 'stable' | 'beta' | 'alpha'
 ): boolean {
   if (channel === 'stable') return !release.prerelease;
   const tag = release.tag_name;
   if (channel === 'beta') return /-beta(\.|$)/.test(tag);
-  if (channel === 'nightly') return /^v?(?:0\.0\.0-)?nightly[.\-]\d{8}(?:[.\-]\d+)?$/i.test(tag);
+  if (channel === 'alpha') return /-alpha(\.|$)/i.test(tag);
   return false;
 }
 
@@ -686,7 +686,7 @@ export function AutoUpdate() {
           <div className="p-2.5 rounded-lg bg-win-card border border-win-border/50 mb-2">
             <p className="text-[11px] font-medium text-win-text-secondary mb-1.5">Update Channel</p>
             <div className="flex gap-1.5">
-              {(['stable', 'beta', 'nightly'] as const).map((channelOpt) => (
+              {(['stable', 'beta', 'alpha'] as const).map((channelOpt) => (
                 <button
                   key={channelOpt}
                   onClick={() => {

@@ -52,12 +52,11 @@ async function findLatestRelease(channel) {
   // Filter by channel
   let filtered;
   if (channel === 'stable') {
-    filtered = releases.filter(r => !r.prerelease && !r.draft && !/beta|nightly/i.test(r.tag_name));
+    filtered = releases.filter(r => !r.prerelease && !r.draft && !/beta|alpha/i.test(r.tag_name));
   } else if (channel === 'beta') {
     filtered = releases.filter(r => /beta/i.test(r.tag_name) && !r.draft);
-  } else {
-    // nightly
-    filtered = releases.filter(r => /nightly/i.test(r.tag_name) && !r.draft);
+  } else if (channel === 'alpha') {
+    filtered = releases.filter(r => /alpha/i.test(r.tag_name) && !r.draft);
   }
   if (!filtered.length) return null;
 
@@ -76,77 +75,60 @@ async function findLatestRelease(channel) {
 }
 
 // ── Normalise version strings ─────────────────────────────────────────
-// Internal helper: strips any "0.0.0-" or "0.0.0." semver prefix that may have
-// been baked into package.json by older CI runs, so nightly versions always
-// compare as "nightly-YYYYMMDD-N".
 function normaliseVersion(v) {
   if (!v) return v;
   return String(v)
     .replace(/^v/, '')
+    // Legacy: strip "0.0.0-nightly." prefix from old CI builds
     .replace(/^0\.0\.0-nightly[.\-]/i, 'nightly-')
+    // Legacy: normalise "nightly.YYYYMMDD.N" dots to dashes
     .replace(/^nightly\.(\d{8})(?:\.(\d+))?$/i, (_, d, n) => `nightly-${d}${n ? `-${n}` : ''}`);
 }
 
 // ── Version comparison ────────────────────────────────────────────────
 // Returns true if remoteVersion is newer than currentVersion
-// Rules:
-//   - Never consider the SAME version as an update
-//   - For stable: compare by semver
-//   - For beta/nightly: compare by publish date (we sort releases newest-first,
-//     so the first matching release IS the newest — if it differs from installed, it's newer)
-function isUpdateAvailable(currentVersion, remoteVersion, channel, remotePublishedAt) {
-  // Normalise both versions to strip any legacy "0.0.0-" prefix
+// Uses standard semver comparison with prerelease support.
+// alpha: 0.1.0-alpha.1 < 0.1.0-alpha.2 (higher alpha = newer)
+// beta: 1.5.0-beta.1 < 1.5.0-beta.2 (higher beta = newer)
+// stable: 1.4.2 < 1.5.0 (standard semver)
+function isUpdateAvailable(currentVersion, remoteVersion) {
   const normRemote = normaliseVersion(remoteVersion);
   const normLocal = normaliseVersion(currentVersion);
 
-  // Exact match (after normalisation) = same version = not an update
+  // Exact match = same version = not an update
   if (normRemote === normLocal) return false;
 
-  // For stable: semver comparison
-  if (channel === 'stable') {
-    const remote = normRemote.split('.').map(Number);
-    const local = normLocal.split('.').map(Number);
-    for (let i = 0; i < 3; i++) {
-      const r = remote[i] || 0, l = local[i] || 0;
-      if (r > l) return true;
-      if (r < l) return false;
+  // Parse semver with optional prerelease
+  const parseSemver = (v) => {
+    const m = v.match(/^(\d+)\.(\d+)\.(\d+)(?:[-.](\w+)[.](\d+))?$/);
+    if (!m) return null;
+    return { major: +m[1], minor: +m[2], patch: +m[3], pre: m[4] || null, preN: m[5] ? +m[5] : 0 };
+  };
+
+  const r = parseSemver(normRemote);
+  const l = parseSemver(normLocal);
+
+  if (r && l) {
+    // Compare major.minor.patch
+    if (r.major !== l.major) return r.major > l.major;
+    if (r.minor !== l.minor) return r.minor > l.minor;
+    if (r.patch !== l.patch) return r.patch > l.patch;
+
+    // Same base version: compare prerelease
+    // No prerelease > prerelease (stable > alpha/beta)
+    if (!r.pre && l.pre) return true;   // remote stable, local pre
+    if (r.pre && !l.pre) return false;   // remote pre, local stable
+
+    // Both have prerelease: compare type then number
+    if (r.pre && l.pre) {
+      if (r.pre !== l.pre) return false; // different pre types don't compare
+      return r.preN > l.preN;
     }
+
     return false; // equal
   }
 
-  // For beta/nightly: the releases are already sorted newest-first by publish date.
-  // If we found a release whose tag name differs from the installed version,
-  // AND it was published AFTER the installed version's release, it's an update.
-  //
-  // The key insight: we compare the tag names. For nightly, "nightly-20260629-17"
-  // vs "nightly-20260629-6" — the one with the higher index is newer.
-  // Since findLatestRelease sorts by publish date and returns the first match,
-  // the returned release IS the newest. If it's different from installed, offer it.
-  //
-  // But we also need to check: is the installed version HIGHER than the remote?
-  // If user has nightly-20260629-17 installed and the latest release is nightly-20260629-9,
-  // we should NOT offer a downgrade.
-  if (remotePublishedAt) {
-    // Extract date+index from both versions for comparison.
-    // After normalisation both are in "nightly-YYYYMMDD-N" form.
-    const parseTag = (v) => {
-      const m = String(v).match(/(\d{8})(?:-(\d+))?$/);
-      if (!m) return null;
-      return { date: m[1], index: parseInt(m[2] || '0', 10) };
-    };
-    const remote = parseTag(normRemote);
-    const local = parseTag(normLocal);
-    if (remote && local) {
-      if (remote.date > local.date) return true;
-      if (remote.date < local.date) return false;
-      if (remote.index > local.index) return true;
-      if (remote.index < local.index) return false;
-      return false; // same date+index
-    }
-    // If we can't parse both, fall through to string comparison
-  }
-
-  // Fallback: different strings = offer update (safe for testing)
+  // Fallback: strings differ but can't parse — offer update
   return true;
 }
 
@@ -159,11 +141,10 @@ function friendlyVersion(version) {
   const v = normaliseVersion(version);
   if (!v) return version;
 
-  // Nightly
-  const nightlyMatch = v.match(/^nightly-(\d{4})(\d{2})(\d{2})(?:-(\d+))?$/i);
-  if (nightlyMatch) {
-    const [, y, m, d, n] = nightlyMatch;
-    return `Nightly ${y}.${m}.${d}${n ? ` (#${n})` : ''}`;
+  // Alpha: 0.1.0-alpha.N → "0.1.0-alpha.N"
+  const alphaMatch = v.match(/^(\d+\.\d+\.\d+)-alpha\.(\d+)$/);
+  if (alphaMatch) {
+    return `Alpha ${alphaMatch[1]} (#${alphaMatch[2]})`;
   }
 
   // Beta
@@ -195,7 +176,7 @@ async function checkForUpdates(channel) {
 
     log(`found release: ${release.version} (${release.publishedAt})`);
 
-    if (!isUpdateAvailable(currentVersion, release.version, channel, release.publishedAt)) {
+    if (!isUpdateAvailable(currentVersion, release.version)) {
       log('up to date');
       return { upToDate: true, version: currentVersion };
     }
