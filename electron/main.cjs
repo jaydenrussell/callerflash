@@ -143,6 +143,9 @@ function createWindow() {
   // Load the single-file output from Vite
   mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
 
+  // Register updater IPC now that we have a real window to report progress through.
+  updater.initUpdaterIPC(mainWindow);
+
   // Open external links in the default browser instead of inside the app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (typeof url === 'string' && url.startsWith('https:')) {
