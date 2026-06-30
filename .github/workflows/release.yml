@@ -158,16 +158,20 @@ jobs:
           CHANNEL="${{ needs.route.outputs.channel }}"
 
           if [[ "$CHANNEL" == "nightly" ]]; then
-            # Nightly: use the tag name directly as the version (e.g. "nightly-20260629-6").
-            # No semver prefix — nightly is testing-only, no semver needed.
-            ARTIFACT="CallerFlash-${VERSION}.\${ext}"
+            # Nightly: package.json needs valid semver for electron-builder.
+            # Use 0.0.0-nightly.YYYYMMDD.N format internally.
+            # The display name and artifact use clean nightly-YYYYMMDD-N.
+            NIGHTLY_TAG="$VERSION"
+            NIGHTLY_SEMVER="0.0.0-nightly.$(echo $VERSION | sed 's|nightly-||; s|-|.|')"
+            ARTIFACT="CallerFlash-${NIGHTLY_TAG}.\${ext}"
             node -e "
               const fs = require('fs');
               const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
-              pkg.version = '${VERSION}';
+              pkg.version = '${NIGHTLY_SEMVER}';
               pkg.build.artifactName = '${ARTIFACT}';
               fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
             "
+            echo "Set package.json version to ${NIGHTLY_SEMVER} (display: ${NIGHTLY_TAG})"
           elif [[ "$CHANNEL" == "beta" ]]; then
             # Beta: version 1.5.0-beta.28 is valid semver.
             # artifactName: CallerFlash-1.5.0-beta.28.exe
