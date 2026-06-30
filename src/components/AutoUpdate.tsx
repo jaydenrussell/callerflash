@@ -341,7 +341,12 @@ export function AutoUpdate() {
     // Use Electron main process to check
     if (window.callerflash?.updater?.check) {
       const result = await window.callerflash.updater.check(updateInfo.updateChannel);
-      if (result?.version) {
+      if (result?.error) {
+        setOutcome({ kind: 'verification-failed', message: result.error });
+        setPhase('idle');
+        return;
+      }
+      if (result?.version && result.version !== result.currentVersion) {
         setUpdateInfo({ latestVersion: result.version, updateAvailable: true, lastChecked: new Date() });
         setDownloadUrl(result.downloadUrl);
         addDiagnosticLog({
@@ -349,15 +354,11 @@ export function AutoUpdate() {
           category: 'UPDATE',
           message: `Update found: ${result.friendlyName || result.version}`,
         });
-        setPhase('idle');
-      } else if (result?.upToDate) {
+      } else {
         setOutcome({ kind: 'no-update', message: `You're running the latest version (${formatVersion(updateInfo.currentVersion)}).` });
         setUpdateInfo({ updateAvailable: false, lastChecked: new Date() });
-        setPhase('idle');
-      } else if (result?.error) {
-        setOutcome({ kind: 'verification-failed', message: result.error });
-        setPhase('idle');
       }
+      setPhase('idle');
       return;
     }
 

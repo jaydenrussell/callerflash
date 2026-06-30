@@ -52,11 +52,13 @@ async function findLatestRelease(channel) {
   // Filter by channel
   let filtered;
   if (channel === 'stable') {
-    filtered = releases.filter(r => !r.prerelease && !r.draft && !/beta|alpha/i.test(r.tag_name));
+    filtered = releases.filter(r => !/beta|alpha|nightly/i.test(r.tag_name) && !r.draft);
   } else if (channel === 'beta') {
-    filtered = releases.filter(r => /beta/i.test(r.tag_name) && !r.draft);
+    filtered = releases.filter(r => /-beta(\.|$)/.test(r.tag_name) && !r.draft);
   } else if (channel === 'alpha') {
-    filtered = releases.filter(r => /alpha/i.test(r.tag_name) && !r.draft);
+    filtered = releases.filter(r => /-alpha(\.|$)/.test(r.tag_name) && !r.draft);
+  } else {
+    filtered = [];
   }
   if (!filtered.length) return null;
 
