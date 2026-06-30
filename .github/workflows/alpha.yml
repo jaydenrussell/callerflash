@@ -11,7 +11,7 @@ name: Release — Alpha
 on:
   push:
     branches:
-      - nightly
+      - alpha
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
