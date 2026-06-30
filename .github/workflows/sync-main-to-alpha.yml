@@ -1,4 +1,4 @@
-name: Sync main → nightly
+name: Sync main → alpha
 
 # Automatically pushes the latest main to the nightly branch on every
 # commit. Uses a PAT (not GITHUB_TOKEN) so the push triggers the
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   sync:
-    name: Push main → nightly
+    name: Push main → alpha
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -24,8 +24,8 @@ jobs:
           # PAT is required — GITHUB_TOKEN pushes don't trigger workflows.
           token: ${{ secrets.PAT_TOKEN }}
 
-      - name: Push to nightly
+      - name: Push to alpha
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git push origin main:nightly --force
+          git push origin main:alpha --force
