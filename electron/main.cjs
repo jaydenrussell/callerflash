@@ -586,6 +586,20 @@ function createToastWindow(data) {
   toastWindow.on('move', saveToastState);
   toastWindow.on('resize', saveToastState);
 
+  // Auto-hide after the configured duration so each toast behaves like a
+  // real notification instead of persisting forever.
+  const durationSec = (data && data.config && data.config.duration) || 8;
+  const durationMs = Math.max(2000, durationSec * 1000);
+  setTimeout(() => {
+    try {
+      if (toastWindow && !toastWindow.isDestroyed()) {
+        toastWindow.hide();
+        toastWindow.destroy();
+        toastWindow = null;
+      }
+    } catch {}
+  }, durationMs);
+
   return toastWindow;
 }
 
