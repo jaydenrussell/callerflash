@@ -174,20 +174,18 @@ async function checkForUpdates(channel) {
     const release = await findLatestRelease(channel);
     if (!release) {
       log('no release found for channel:', channel);
-      return { upToDate: true, version: currentVersion, currentVersion };
+      return { upToDate: true, currentVersion, version: currentVersion };
     }
-
-    log(`found release: ${release.version} (${release.publishedAt})`);
-
     if (!isUpdateAvailable(currentVersion, release.version)) {
       log('up to date');
-      return { upToDate: true, version: currentVersion, currentVersion };
+      return { upToDate: true, currentVersion, version: currentVersion };
     }
 
     return {
       upToDate: false,
-      version: release.version,
       currentVersion,
+      version: release.version,
+      friendlyName: friendlyVersion(release.version),
       downloadUrl: release.downloadUrl,
       publishedAt: release.publishedAt,
     };
