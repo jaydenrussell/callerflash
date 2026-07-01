@@ -57,18 +57,6 @@
       "buildResources/**"
     ],
     "artifactName": "CallerFlash-${version}.${ext}",
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "app.ico",
-      "publisherName": "CallerFlash"
-    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
