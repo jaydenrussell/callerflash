@@ -18,4 +18,5 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       channel: stable
+      prerelease: false
     secrets: inherit
