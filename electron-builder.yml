@@ -25,6 +25,7 @@ asarUnpack:
   - buildResources/**
 
 win:
+  publisherName: CallerFlash
   icon: app.ico
   target:
     - target: nsis
