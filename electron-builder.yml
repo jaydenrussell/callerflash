@@ -15,6 +15,7 @@ files:
 artifactName: "CallerFlash-${version}.${ext}"
 
 win:
+  publisherName: CallerFlash
   target:
     - target: nsis
       arch:
