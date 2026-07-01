@@ -348,7 +348,6 @@ export function AutoUpdate() {
       }
       if (result?.version && result.version !== result.currentVersion) {
         setUpdateInfo({ latestVersion: result.version, updateAvailable: true, lastChecked: new Date() });
-        setDownloadUrl(result.downloadUrl);
         addDiagnosticLog({
           level: 'info',
           category: 'UPDATE',
@@ -356,12 +355,11 @@ export function AutoUpdate() {
         });
 
         // Auto-download if enabled
-        if (updateInfo.autoDownload && result.downloadUrl) {
+        if (updateInfo.autoDownload) {
           setPhase('downloading');
           setUpdateInfo({ isDownloading: true });
-          // Delegate download to main process so progress is reported via IPC.
           if (window.callerflash?.updater?.download) {
-            window.callerflash.updater.download(updateInfo.updateChannel, result.version, result.downloadUrl);
+            window.callerflash.updater.download();
           }
         }
       } else {
@@ -475,7 +473,7 @@ export function AutoUpdate() {
 
     if (window.callerflash?.updater?.install) {
       console.log('[UI] handleInstall: calling IPC updater.install');
-      window.callerflash.updater.install(updateInfo.latestVersion);
+      window.callerflash.updater.install();
       setPhase('installing');
       setUpdateInfo({ isInstalling: true });
     } else {
@@ -505,7 +503,7 @@ export function AutoUpdate() {
 
     if (window.callerflash?.updater?.download) {
       console.log('[UI] handleUpdate: calling IPC updater.download');
-      window.callerflash.updater.download(updateInfo.updateChannel, updateInfo.latestVersion, downloadUrl);
+      window.callerflash.updater.download();
       setPhase('downloading');
       setUpdateInfo({ isDownloading: true });
     } else {

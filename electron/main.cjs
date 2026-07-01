@@ -23,6 +23,7 @@ const http = require('http');
 const { spawn } = require('child_process');
 const sipClient = require('./sipClient.cjs');
 const updater = require('./updater.cjs');
+const { autoUpdater } = require('electron-updater');
 
 // Initialize secure file-based storage (registers IPC handlers)
 require('./secureStorage.cjs');
@@ -144,7 +145,14 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
 
   // Register updater IPC now that we have a real window to report progress through.
-  updater.initUpdaterIPC(mainWindow);
+  initAutoUpdaterIPC(mainWindow);
+  
+  // Wire electron-updater feed from build.publish / app updater config.
+  if (!app.isPackaged) {
+    autoUpdater.updateConfigPath = path.join(__dirname, '..', 'dev-app-update.yml');
+    fs.writeFileSync(autoUpdater.updateConfigPath, 'updater:\n  url: https://github.com/jaydenrussell/CallerFlash/releases/latest\nprovider: generic\n');
+  }
+  autoUpdater.autoDownload = false;
 
   // Open external links in the default browser instead of inside the app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
