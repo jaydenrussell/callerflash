@@ -127,11 +127,13 @@ class SecureStorage {
         const result = await window.callerflash?.storage?.load?.();
         if (result && typeof result === 'object') {
           data = { ...data, ...result };
+          this.cache = data;
+          return data;
         }
       } catch {
-        // Fallback to localStorage if main process fails
-        data = this.loadFromLocalStorage();
+        // Fallback to localStorage if main process storage is unavailable
       }
+      data = this.loadFromLocalStorage();
     } else {
       // Web dev mode: use localStorage
       data = this.loadFromLocalStorage();
@@ -156,15 +158,19 @@ class SecureStorage {
 
     if (this.isElectron) {
       try {
-        await window.callerflash?.storage?.save?.(toSave);
+        const result = await window.callerflash?.storage?.save?.(toSave);
+        if (result && (result as any).success === false) {
+          throw new Error((result as any).error || 'storage save failed');
+        }
         return;
       } catch {
-        // Fallback to localStorage
+        // Fallback to localStorage when Electron persistent storage is unavailable
+        this.saveToLocalStorage(toSave);
       }
+    } else {
+      this.saveToLocalStorage(toSave);
     }
-    this.saveToLocalStorage(toSave);
   }
-
   private loadFromLocalStorage(): PersistedUiSettings {
     if (typeof window === 'undefined') return { version: STORAGE_VERSION };
     try {
@@ -213,26 +219,25 @@ function loadSettingsSync(): PersistedUiSettings {
 
 const persistedUi: PersistedUiSettings = loadSettingsSync();
 
-// Phase 2: After store is created, try to load from file storage and migrate
-async function initStorageMigration() {
+// Phase 2: After store is created, try to load from file storage and hydrate
+async function initStorageHydration() {
   try {
     if (typeof window !== 'undefined' && window.callerflash?.storage?.load) {
       const fileData = await window.callerflash.storage.load();
-      if (fileData && Object.keys(fileData).length > 0 && fileData.version >= 2) {
-        return; // File storage is authoritative
-      }
-    }
-    // Migrate localStorage to file
-    const localData = loadSettingsSync();
-    if (localData && Object.keys(localData).length > 1) {
-      if (window.callerflash?.storage?.save) {
-        await window.callerflash.storage.save(localData);
-        console.log('[store] Migrated localStorage to file storage');
+      if (fileData && typeof fileData === 'object' && Object.keys(fileData).length > 0) {
+        // File storage is authoritative — migrate cached state from file
+        // so settings survive when Electron IPC was temporarily unreachable.
+        Object.assign(persistedUi, fileData);
       }
     }
   } catch {
-    // Ignore — localStorage data is still valid
+    // Ignore — localStorage/cached data is still valid
   }
+}
+
+// Kick off hydration without blocking renderer startup.
+if (typeof window !== 'undefined') {
+  initStorageHydration().catch(() => {});
 }
 
 // ── Store interface ──────────────────────────────────────────────────

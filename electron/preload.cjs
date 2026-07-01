@@ -74,13 +74,11 @@ contextBridge.exposeInMainWorld('callerflash', {
     },
   },
 
-  // ── Auto-updater (custom) ────────────────────────────────────────
+  // ── Auto-updater (electron-updater adapter) ─────────────────────────
   updater: {
     check: (channel) => ipcRenderer.invoke('updater:check', channel),
-    download: (channel, version, downloadUrl) => ipcRenderer.send('updater:download', { channel, version, downloadUrl }),
-    install: (version) => ipcRenderer.send('updater:install', { version }),
-    show: () => ipcRenderer.send('updater:show'),
-    setChannel: (channel) => ipcRenderer.send('updater:set-channel', channel),
+    download: () => ipcRenderer.send('updater:download'),
+    install: () => ipcRenderer.send('updater:install'),
     getDownloadState: () => ipcRenderer.invoke('updater:getDownloadState'),
     onStatus: (callback) => {
       const handler = (_event, data) => callback(data);
