@@ -147,11 +147,6 @@ function createWindow() {
   // Register updater IPC now that we have a real window to report progress through.
   initAutoUpdaterIPC(mainWindow);
   
-  // Wire electron-updater feed from build.publish / app updater config.
-  if (!app.isPackaged) {
-    autoUpdater.updateConfigPath = path.join(__dirname, '..', 'dev-app-update.yml');
-    fs.writeFileSync(autoUpdater.updateConfigPath, 'updater:\n  url: https://github.com/jaydenrussell/CallerFlash/releases/latest\nprovider: generic\n');
-  }
   autoUpdater.autoDownload = false;
 
   // Open external links in the default browser instead of inside the app.

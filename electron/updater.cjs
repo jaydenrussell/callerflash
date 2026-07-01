@@ -166,7 +166,7 @@ function initUpdaterIPC(mainWindow) {
 
   ipcMain.on('updater:download', async (_e, _opts) => {
     const state = getDownloadState();
-    await downloadUpdate('stable', state.version || app.getVersion());
+    await downloadUpdate(opts?.channel || 'stable', state.version || app.getVersion());
   });
 
   ipcMain.on('updater:install', (_e, _opts) => {
