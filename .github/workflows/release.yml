@@ -1,4 +1,95 @@
 name: Build & Release
 
+# Reusable engine: Windows-only, unsigned NSIS packaging plus GitHub release upload.
+# No sign / verify / code-signing secret required.
+# Outputs: CallerFlash-<version>.exe, CallerFlash-<version>.exe.blockmap
+
 on:
-  workflow_c
+  workflow_call:
+    inputs:
+      channel:
+        required: true
+        type: string
+        description: "Release channel label (stable|beta|alpha)"
+      prerelease:
+        required: true
+        type: boolean
+        description: "Mark the GitHub release as prerelease"
+      tag_prefix:
+        required: false
+        type: string
+        default: ""
+        description: "Optional tag prefix for derivation, e.g. v or empty"
+
+jobs:
+  build:
+    name: Build Windows EXE
+    runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer
+        run: npm run build
+
+      - name: Package Windows unsigned NSIS
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.channel }}-windows-installer
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Derive tag
+        id: tag
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.channel }}" = "stable" ]; then
+            echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.channel }}-${version}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.version }}
+          prerelease: ${{ inputs.prerelease }}
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.exe.blockmap
+          draft: false
+          generate_release_notes: true
