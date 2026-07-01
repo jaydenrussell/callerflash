@@ -51,16 +51,6 @@
       "!node_modules"
     ],
     "artifactName": "CallerFlash-${version}.${ext}",
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
-      ],
-      "icon": "build/icon.ico",
-      "publisherName": "CallerFlash"
-    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
@@ -80,8 +70,14 @@
       "repo": "CallerFlash"
     },
     "extraResources": [
-      { "from": "build/cflogo.ico", "to": "cflogo.ico" },
-      { "from": "build/cflogo.png", "to": "cflogo.png" }
+      {
+        "from": "build/cflogo.ico",
+        "to": "cflogo.ico"
+      },
+      {
+        "from": "build/cflogo.png",
+        "to": "cflogo.png"
+      }
     ]
   }
 }
